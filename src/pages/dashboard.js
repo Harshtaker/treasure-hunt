@@ -191,23 +191,33 @@ export default function Dashboard() {
   // 5. CAMERA START LOGIC
   // =========================
   useEffect(() => {
+    let isMounted = true;
+    
     if (isScanning && !isEliminated && !isFinished) {
       const start = async () => {
         try {
+          // Delay heavily to prevent React StrictMode double-rendering crash
+          await new Promise((res) => setTimeout(res, 200));
+          if (!isMounted) return;
+
           scannerRef.current = new Html5Qrcode('reader');
           await scannerRef.current.start(
             { facingMode: 'environment' },
-            { fps: 20, qrbox: { width: 250, height: 250 } },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
             onScanSuccess
           );
-        } catch (_) {
-          setIsScanning(false);
+        } catch (err) {
+          if (isMounted) {
+            alert('Camera Access Denied/Failed: You must use HTTPS or localhost to access the camera on mobile. Error details: ' + (err?.message || err));
+            setIsScanning(false);
+          }
         }
       };
       start();
     }
     return () => {
-      if (scannerRef.current?.isScanning) {
+      isMounted = false;
+      if (scannerRef.current && scannerRef.current.isScanning) {
         scannerRef.current.stop().catch(() => {});
       }
     };
