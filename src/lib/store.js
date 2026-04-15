@@ -95,12 +95,18 @@ export const usePlayerStore = create(
 
         const isFinal = targetRound === 5;
         const now = new Date().toISOString();
+        let timeTaken = 0;
+        
+        if (isFinal && team.created_at) {
+           timeTaken = Math.floor((new Date(now).getTime() - new Date(team.created_at).getTime()) / 1000);
+        }
 
         const nextTeam = {
           ...team,
           current_sector: targetRound,
           last_clue_start: now,
           status: isFinal ? 'FINISHED' : 'ACTIVE',
+          ...(isFinal && { total_time_taken: timeTaken })
         };
 
         // ========== STEP 1: INSTANT LOCAL SAVE ==========
@@ -121,6 +127,7 @@ export const usePlayerStore = create(
               current_sector: targetRound,
               last_clue_start: now,
               status: isFinal ? 'FINISHED' : 'ACTIVE',
+              ...(isFinal && { total_time_taken: timeTaken })
             })
             .eq('id', team.id);
 
@@ -177,6 +184,28 @@ export const usePlayerStore = create(
         }
 
         return nextTeam;
+      },
+
+      /**
+       * Called after a failed QR scan (wrong location).
+       * Increments failed_scans in the database.
+       */
+      recordFailedScan: async () => {
+        const { team } = get();
+        if (!team) return;
+
+        try {
+          // Fire and forget increment
+          supabase.rpc('increment_failed_scans', { t_id: team.id }).then();
+          
+          // Fallback if RPC doesn't exist: fetch and increment
+          const { data } = await supabase.from('teams').select('failed_scans').eq('id', team.id).single();
+          if (data) {
+            await supabase.from('teams').update({ failed_scans: (data.failed_scans || 0) + 1 }).eq('id', team.id);
+          }
+        } catch (e) {
+          console.error(e);
+        }
       },
 
       /**

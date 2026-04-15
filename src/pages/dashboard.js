@@ -14,6 +14,7 @@ export default function Dashboard() {
   const setRevealedClue = usePlayerStore((s) => s.setRevealedClue);
   const setEliminated = usePlayerStore((s) => s.setEliminated);
   const advanceRound = usePlayerStore((s) => s.advanceRound);
+  const recordFailedScan = usePlayerStore((s) => s.recordFailedScan);
   const syncFromDB = usePlayerStore((s) => s.syncFromDB);
   const logout = usePlayerStore((s) => s.logout);
 
@@ -111,6 +112,7 @@ export default function Dashboard() {
 
       if (!clueData) {
         setMsg({ type: 'error', text: 'WRONG LOCATION' });
+        recordFailedScan();
         setTimeout(() => {
           setMsg({ type: '', text: '' });
           setIsProcessing(false);
