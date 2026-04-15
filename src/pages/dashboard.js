@@ -208,8 +208,12 @@ export default function Dashboard() {
           );
         } catch (err) {
           if (isMounted) {
-            alert('Camera Access Denied/Failed: You must use HTTPS or localhost to access the camera on mobile. Error details: ' + (err?.message || err));
             setIsScanning(false);
+            if (err?.name === 'NotAllowedError') {
+              alert("MISSION BLOCKED: Camera access is denied. Please click the 'Lock' icon in your browser address bar and set Camera to 'Allow' to continue.");
+            } else {
+              alert('Camera Error: You must use HTTPS or your device blocked access. ' + (err?.message || err));
+            }
           }
         }
       };
