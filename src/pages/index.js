@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
@@ -13,7 +13,9 @@ export default function Login() {
   const router = useRouter();
 
   const playerLogin = usePlayerStore((s) => s.login);
+  const existingTeam = usePlayerStore((s) => s.team);
   const adminLogin = useAdminStore((s) => s.loginAdmin);
+  const isAdmin = useAdminStore((s) => s.isAdmin);
 
   const [formData, setFormData] = useState({
     teamName: '',
@@ -24,6 +26,15 @@ export default function Login() {
     member3: '',
     member4: '',
   });
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (existingTeam) {
+      router.push('/dashboard');
+    } else if (isAdmin) {
+      router.push('/admin/dashboard');
+    }
+  }, [existingTeam, isAdmin, router]);
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
@@ -51,7 +62,7 @@ export default function Login() {
     setErrorMsg('');
 
     if (isLogin) {
-      // Fetch ALL columns to get actual progress
+      // Fetch ALL columns to get actual progress from DB
       const { data, error } = await supabase
         .from('teams')
         .select('*')
@@ -62,7 +73,9 @@ export default function Login() {
       if (error || !data) {
         setErrorMsg('Wrong Team Name or Password!');
       } else {
-        // Save to Zustand store (auto-persisted to localStorage)
+        // playerLogin() intelligently merges DB + local state
+        // If local has higher sector (from a previous browser-close scenario),
+        // it keeps local AND pushes it back to DB.
         playerLogin(data);
         router.push('/dashboard');
       }
@@ -86,7 +99,7 @@ export default function Login() {
         setErrorMsg(
           error.message.includes('unique')
             ? 'This Team Name is already taken!'
-            : 'Sign up failed'
+            : 'Sign up failed: ' + error.message
         );
       } else {
         alert('Team Registered! Now you can Login.');

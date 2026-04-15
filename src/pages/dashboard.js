@@ -13,7 +13,6 @@ export default function Dashboard() {
   const isFinished = usePlayerStore((s) => s.isFinished);
   const setRevealedClue = usePlayerStore((s) => s.setRevealedClue);
   const setEliminated = usePlayerStore((s) => s.setEliminated);
-  const setFinished = usePlayerStore((s) => s.setFinished);
   const advanceRound = usePlayerStore((s) => s.advanceRound);
   const syncFromDB = usePlayerStore((s) => s.syncFromDB);
   const logout = usePlayerStore((s) => s.logout);
@@ -45,7 +44,7 @@ export default function Dashboard() {
       setHydrated(true);
     });
 
-    // If already hydrated (hot reload)
+    // If already hydrated (hot reload / fast refresh)
     if (usePlayerStore.persist.hasHydrated()) {
       setHydrated(true);
     }
@@ -63,6 +62,7 @@ export default function Dashboard() {
     }
 
     // Background sync with DB (non-blocking)
+    // This also pushes local-ahead state to DB if needed
     syncFromDB();
   }, [hydrated, router, syncFromDB]);
 
@@ -70,14 +70,24 @@ export default function Dashboard() {
   // 2. LOGOUT
   // =========================
   const handleLogout = () => {
-    if (confirm('Logout? Progress is saved.')) {
+    if (confirm('Logout? Your progress is saved and will be restored on next login.')) {
+      // NOTE: We do NOT call logout() here — we keep the Zustand state
+      // so that on re-login, the progress is preserved.
+      // We only navigate away.
+      router.push('/');
+    }
+  };
+
+  // Full logout (clears all data)
+  const handleFullLogout = () => {
+    if (confirm('WARNING: This will clear ALL saved progress from this device. Continue?')) {
       logout();
       router.push('/');
     }
   };
 
   // =========================
-  // 3. SCAN LOGIC (ZERO-LATENCY)
+  // 3. SCAN LOGIC
   // =========================
   const onScanSuccess = useCallback(async (decodedText) => {
     if (isProcessingRef.current) return;
@@ -114,10 +124,14 @@ export default function Dashboard() {
 
       const isFinal = targetRound === 5;
 
-      // Advance round via Zustand (auto-persists + syncs DB)
+      // advanceRound() does ALL of these atomically:
+      // 1. Updates Zustand (auto-persisted to localStorage)
+      // 2. Direct UPDATE to teams table in Supabase
+      // 3. Broadcasts scan event to admin
+      // 4. Calls RPC if it exists (belt + suspenders)
       await advanceRound(targetRound, clueData);
 
-      // UI feedback
+      // Reset timer for new round
       if (!isFinal) {
         setTimeLeft(2400);
       }
@@ -136,7 +150,9 @@ export default function Dashboard() {
       console.error('Scan error:', e);
       setIsProcessing(false);
       isProcessingRef.current = false;
-      if (scannerRef.current) await scannerRef.current.resume();
+      if (scannerRef.current) {
+        try { await scannerRef.current.resume(); } catch (_) {}
+      }
     }
   }, [advanceRound]);
 
@@ -145,20 +161,31 @@ export default function Dashboard() {
   // =========================
   useEffect(() => {
     if (!revealedClue || !team?.last_clue_start || isEliminated || isFinished) return;
+    
+    // Calculate initial time remaining
+    const start = new Date(team.last_clue_start).getTime();
+    const initialElapsed = Math.floor((Date.now() - start) / 1000);
+    const initialRemaining = 2400 - initialElapsed;
+    
+    if (initialRemaining <= 0) {
+      setEliminated();
+      return;
+    }
+    
+    setTimeLeft(initialRemaining);
+    
     const timer = setInterval(() => {
-      const start = new Date(team.last_clue_start).getTime();
       const elapsed = Math.floor((Date.now() - start) / 1000);
       const remaining = 2400 - elapsed;
       if (remaining <= 0) {
         setEliminated();
-        supabase.from('teams').update({ status: 'ELIMINATED' }).eq('id', team.id).then();
         clearInterval(timer);
       } else {
         setTimeLeft(remaining);
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [team?.last_clue_start, revealedClue, isEliminated, isFinished, team?.id, setEliminated]);
+  }, [team?.last_clue_start, revealedClue, isEliminated, isFinished, setEliminated]);
 
   // =========================
   // 5. CAMERA START LOGIC
@@ -180,7 +207,9 @@ export default function Dashboard() {
       start();
     }
     return () => {
-      if (scannerRef.current?.isScanning) scannerRef.current.stop();
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().catch(() => {});
+      }
     };
   }, [isScanning, onScanSuccess, isEliminated, isFinished]);
 
@@ -195,12 +224,17 @@ export default function Dashboard() {
 
   // --- RENDER ---
 
-  // Wait for hydration
+  // Wait for hydration before rendering anything
   if (!hydrated || !team) return null;
 
   if (isFinished)
     return (
       <div className="h-screen bg-[#050505] flex items-center justify-center text-white text-5xl f-h gold-glow text-center p-4">
+        <style jsx global>{`
+          @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
+          .f-h { font-family: 'Cinzel', serif; }
+          .gold-glow { text-shadow: 0 0 15px rgba(212, 175, 55, 0.5); }
+        `}</style>
         MISSION COMPLETE
       </div>
     );
@@ -208,6 +242,10 @@ export default function Dashboard() {
   if (isEliminated)
     return (
       <div className="h-screen bg-red-950 flex items-center justify-center text-white text-5xl f-h text-center p-4">
+        <style jsx global>{`
+          @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
+          .f-h { font-family: 'Cinzel', serif; }
+        `}</style>
         ELIMINATED
       </div>
     );

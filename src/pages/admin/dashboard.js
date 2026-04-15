@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -13,12 +13,18 @@ export default function AdminDashboard() {
   const subscribeRealtime = useAdminStore((s) => s.subscribeRealtime);
   const logoutAdmin = useAdminStore((s) => s.logoutAdmin);
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
+
+  // Wait for Zustand hydration
+  useEffect(() => {
+    const unsub = useAdminStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useAdminStore.persist.hasHydrated()) setHydrated(true);
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
 
   useEffect(() => {
-    if (!isAdmin) {
-      router.push('/');
-      return;
-    }
+    if (!hydrated) return;
+    if (!isAdmin) { router.push('/'); return; }
 
     // Initial fetch
     fetchTeams();
@@ -26,19 +32,21 @@ export default function AdminDashboard() {
     // Subscribe to Supabase Realtime for instant updates
     const unsubscribe = subscribeRealtime();
 
-    // Also keep a fallback poll every 10s in case Realtime hiccups
-    const fallbackInterval = setInterval(fetchTeams, 10000);
+    // Fallback poll every 5s (guarantees updates even if Realtime hiccups)
+    const fallbackInterval = setInterval(fetchTeams, 5000);
 
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
       clearInterval(fallbackInterval);
     };
-  }, [isAdmin, router, fetchTeams, subscribeRealtime]);
+  }, [hydrated, isAdmin, router, fetchTeams, subscribeRealtime]);
 
   const handleLogout = () => {
     logoutAdmin();
     router.push('/');
   };
+
+  if (!hydrated) return null;
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-4 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
@@ -82,7 +90,7 @@ export default function AdminDashboard() {
                <p className="data-font text-[10px] tracking-[0.5em] text-red-500 font-black">Oracle_System_Online // Sync: {lastSync}</p>
             </div>
             <h1 className="legend-font text-6xl md:text-8xl tracking-tighter text-white leading-none">
-              ELDER'S <span className="text-[#d4af37] chamber-glow">WATCH</span>
+              ELDER&apos;S <span className="text-[#d4af37] chamber-glow">WATCH</span>
             </h1>
             <nav className="flex flex-wrap gap-x-10 gap-y-4 pt-4">
               <Link href="#" className="data-font text-[11px] tracking-[0.4em] text-[#d4af37] border-b-2 border-[#d4af37] pb-1 font-bold">EXPEDITIONS</Link>
@@ -178,9 +186,11 @@ export default function AdminDashboard() {
                 <div className={`inline-block min-w-[200px] px-8 py-4 border-2 text-[12px] font-black tracking-[0.5em] shadow-2xl ${
                   team.status === 'ELIMINATED'
                     ? 'border-red-900 text-red-600 bg-red-950/20'
+                    : team.status === 'FINISHED'
+                    ? 'border-green-700 text-green-500 bg-green-950/20'
                     : 'border-[#d4af37] text-[#d4af37] bg-white/5'
                 }`}>
-                  {team.status === 'ELIMINATED' ? 'EXPEDITION_FAILED' : 'SIGNAL_ACTIVE'}
+                  {team.status === 'ELIMINATED' ? 'EXPEDITION_FAILED' : team.status === 'FINISHED' ? 'MISSION_COMPLETE' : 'SIGNAL_ACTIVE'}
                 </div>
                 <p className="data-font text-[8px] opacity-30 mt-3 tracking-widest">
                    UID: {team.id.toString().substring(0,8)}...
