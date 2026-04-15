@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Adding Eagle Lake for the ancient feel and Montserrat for the Pro feel */
+@import url('https://fonts.googleapis.com/css2?family=Eagle+Lake&family=Montserrat:wght@300;900&family=Cinzel:wght@700&display=swap');
+
+:root {
+  --artifact-gold: #d4af37;
+  --mystic-white: #e5e7eb;
+}
+
+body {
+  /* Replaced black with a deep, dark obsidian stone texture */
+  background: radial-gradient(circle at center, #1a1a1a 0%, #050505 100%);
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* THE NEW TITLE STYLE */
+.legendary-title {
+  font-family: 'Eagle Lake', cursive;
+  background: linear-gradient(to bottom, #ffffff 0%, #d4af37 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 15px rgba(212, 175, 55, 0.4));
+  font-size: 5rem;
+  letter-spacing: -2px;
+}
+
+.modern-subtext {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.8em;
+  color: var(--mystic-white);
+  text-transform: uppercase;
+}
+
+.portal-input-adv {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 900;
+  color: white;
+  letter-spacing: 0.2em;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.portal-input-adv:focus {
+  border-color: #d4af37;
+  background: rgba(212, 175, 55, 0.1);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
+}
+
+/* Specific border for the Leader field as requested */
+.leader-mark {
+  border-left: 3px solid var(--artifact-gold) !important;
+}
+
+/* Helper for the Registration expansion */
+.registration-container {
+  border-top: 1px solid rgba(212, 175, 55, 0.1);
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+}

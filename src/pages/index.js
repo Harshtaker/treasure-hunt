@@ -1,0 +1,286 @@
+import { useState } from 'react';
+import { useRouter } from 'next/router';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../lib/supabase';
+import { usePlayerStore, useAdminStore } from '../lib/store';
+
+export default function Login() {
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminData, setAdminData] = useState({ username: '', password: '' });
+  const router = useRouter();
+
+  const playerLogin = usePlayerStore((s) => s.login);
+  const adminLogin = useAdminStore((s) => s.loginAdmin);
+
+  const [formData, setFormData] = useState({
+    teamName: '',
+    password: '',
+    leaderName: '',
+    leaderPhone: '',
+    member2: '',
+    member3: '',
+    member4: '',
+  });
+
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from('admins')
+      .select('*')
+      .eq('username', adminData.username)
+      .eq('password', adminData.password)
+      .single();
+
+    if (error || !data) {
+      alert('Staff access denied. Check your password.');
+    } else {
+      adminLogin();
+      router.push('/admin/dashboard');
+    }
+    setLoading(false);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+
+    if (isLogin) {
+      // Fetch ALL columns to get actual progress
+      const { data, error } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('team_name', formData.teamName)
+        .eq('password', formData.password)
+        .single();
+
+      if (error || !data) {
+        setErrorMsg('Wrong Team Name or Password!');
+      } else {
+        // Save to Zustand store (auto-persisted to localStorage)
+        playerLogin(data);
+        router.push('/dashboard');
+      }
+    } else {
+      const { error } = await supabase.from('teams').insert([
+        {
+          team_name: formData.teamName,
+          password: formData.password,
+          leader_name: formData.leaderName,
+          leader_phone: formData.leaderPhone,
+          member_2: formData.member2,
+          member_3: formData.member3,
+          member_4: formData.member4,
+          last_clue_start: null,
+          current_sector: 0,
+          status: 'ACTIVE',
+        },
+      ]);
+
+      if (error) {
+        setErrorMsg(
+          error.message.includes('unique')
+            ? 'This Team Name is already taken!'
+            : 'Sign up failed'
+        );
+      } else {
+        alert('Team Registered! Now you can Login.');
+        setIsLogin(true);
+      }
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="relative w-screen h-screen flex items-center justify-center overflow-hidden bg-[#050505]">
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Space+Mono:wght@400;700&display=swap');
+        .hunt-title { font-family: 'Cinzel', serif; font-size: clamp(2.5rem, 8vw, 5rem); color: #fff; text-shadow: 0 0 30px rgba(212,175,55,0.4); text-transform: uppercase; letter-spacing: -0.05em; line-height: 0.9; }
+        .hunt-text { font-family: 'Space Mono', monospace; letter-spacing: 0.3em; color: #d4af37; text-transform: uppercase; }
+        .portal-input-adv { background: rgba(255,255,255,0.05); border: 1px solid rgba(212,175,55,0.3); color: #f4e4bc; font-family: 'Space Mono', monospace; transition: all 0.4s ease; }
+        .portal-input-adv:focus { border-color: #d4af37; background: rgba(212,175,55,0.1); box-shadow: 0 0 20px rgba(212,175,55,0.2); outline: none; }
+        .custom-vignette { background: radial-gradient(circle, transparent 20%, black 100%); }
+        .hunt-font { font-family: 'Cinzel', serif; }
+      `}</style>
+
+      {/* STAFF ACCESS BUTTON */}
+      <div className="absolute top-8 right-8 z-50">
+        <button
+          onClick={() => setShowAdminLogin(true)}
+          className="group relative flex flex-col items-end"
+        >
+          <span className="hunt-text text-[10px] mb-2 opacity-60 group-hover:opacity-100 transition-opacity">
+            Staff_Only
+          </span>
+          <div className="flex items-center gap-3 bg-black/60 border border-[#d4af37]/30 px-5 py-3 backdrop-blur-md group-hover:border-[#d4af37] transition-all duration-500">
+            <div className="w-2 h-2 rounded-full bg-[#d4af37] animate-pulse" />
+            <span className="hunt-font text-[12px] tracking-widest text-white uppercase font-bold">
+              Admin Login
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {/* BACKGROUND */}
+      <div className="absolute inset-0 z-0">
+        <motion.img
+          initial={{ scale: 1.1 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 10, repeat: Infinity, repeatType: 'reverse' }}
+          src="/cave.webp"
+          className="w-full h-full object-cover opacity-40 grayscale"
+          alt="Cave Background"
+        />
+        <div className="absolute inset-0 custom-vignette opacity-80" />
+      </div>
+
+      {/* LANTERN (ON THE RIGHT) */}
+      <motion.img
+        animate={{ y: [0, -20, 0], rotate: [0, -3, 0] }}
+        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+        src="/lantern.webp"
+        className="absolute top-[18%] right-[10%] w-28 md:w-44 z-10 opacity-70 pointer-events-none drop-shadow-[0_0_60px_rgba(212,175,55,0.4)]"
+      />
+
+      {/* CHEST */}
+      <motion.img
+        initial={{ x: -100, opacity: 0 }}
+        animate={{ x: 0, opacity: 0.8 }}
+        src="/chest.webp"
+        className="absolute bottom-[-50px] left-[-50px] w-[300px] md:w-[500px] z-10 hidden lg:block pointer-events-none brightness-50"
+      />
+
+      {/* LOGIN BOX */}
+      <main className="relative z-20 w-full max-w-xl px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-12"
+        >
+          <h1 className="hunt-title">The Maze</h1>
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <div className="h-[1px] w-12 bg-[#d4af37]/40" />
+            <p className="hunt-text text-sm font-bold">Ambedkar Nagar ▸ 2026</p>
+            <div className="h-[1px] w-12 bg-[#d4af37]/40" />
+          </div>
+        </motion.div>
+
+        <motion.form layout onSubmit={handleSubmit} className="space-y-5">
+          <AnimatePresence mode="wait">
+            {errorMsg && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-red-500 text-sm text-center font-bold uppercase tracking-widest bg-red-950/20 py-2 border border-red-500/30"
+              >
+                {errorMsg}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-4">
+            <input
+              required
+              type="text"
+              placeholder="TEAM NAME"
+              className="portal-input-adv w-full py-5 text-center text-xl font-bold tracking-widest uppercase"
+              onChange={(e) => setFormData({ ...formData, teamName: e.target.value })}
+            />
+            <input
+              required
+              type="password"
+              placeholder="TEAM PASSWORD"
+              className="portal-input-adv w-full py-5 text-center text-xl font-bold tracking-widest uppercase"
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            />
+          </div>
+
+          <AnimatePresence>
+            {!isLogin && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-4 pt-4 border-t border-[#d4af37]/20"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input required type="text" placeholder="LEADER NAME" className="portal-input-adv py-4 text-base text-center font-bold uppercase" onChange={(e) => setFormData({ ...formData, leaderName: e.target.value })} />
+                  <input required type="tel" placeholder="PHONE NUMBER" className="portal-input-adv py-4 text-base text-center font-bold" onChange={(e) => setFormData({ ...formData, leaderPhone: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input required type="text" placeholder="MEMBER 2" className="portal-input-adv py-4 text-sm text-center font-bold uppercase" onChange={(e) => setFormData({ ...formData, member2: e.target.value })} />
+                  <input required type="text" placeholder="MEMBER 3" className="portal-input-adv py-4 text-sm text-center font-bold uppercase" onChange={(e) => setFormData({ ...formData, member3: e.target.value })} />
+                  <input required type="text" placeholder="MEMBER 4" className="portal-input-adv py-4 text-sm text-center font-bold uppercase" onChange={(e) => setFormData({ ...formData, member4: e.target.value })} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <motion.button
+            disabled={loading}
+            whileHover={{ scale: 1.01 }}
+            className="w-full bg-[#d4af37] text-black py-5 font-black text-base tracking-[0.4em] uppercase transition-all shadow-[0_0_30px_rgba(212,175,55,0.3)] disabled:opacity-50"
+          >
+            {loading ? 'Decrypting...' : isLogin ? 'Start Game' : 'Join Game'}
+          </motion.button>
+
+          <div className="pt-6 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setErrorMsg('');
+              }}
+              className="hunt-text text-sm font-bold underline decoration-[#d4af37]/40 underline-offset-8 hover:text-white transition-colors"
+            >
+              {isLogin ? 'No team? Create one here' : 'Back to Login'}
+            </button>
+          </div>
+        </motion.form>
+      </main>
+
+      {/* ADMIN MODAL */}
+      <AnimatePresence>
+        {showAdminLogin && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="w-full max-w-sm p-10 border border-[#d4af37]/30 bg-[#0a0a0a]"
+            >
+              <div className="text-center mb-8">
+                <h2 className="hunt-font text-3xl text-[#d4af37] uppercase font-bold italic tracking-widest">Admin Access</h2>
+                <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-[#d4af37]/50 to-transparent mt-4" />
+              </div>
+
+              <form onSubmit={handleAdminLogin} className="space-y-5">
+                <input required type="text" placeholder="USERNAME" className="portal-input-adv w-full py-4 text-lg text-center font-bold" onChange={(e) => setAdminData({ ...adminData, username: e.target.value })} />
+                <input required type="password" placeholder="PASSWORD" className="portal-input-adv w-full py-4 text-lg text-center font-bold" onChange={(e) => setAdminData({ ...adminData, password: e.target.value })} />
+                <button className="w-full bg-[#d4af37] text-black py-4 font-black uppercase text-base tracking-widest">Login</button>
+                <button
+                  type="button"
+                  onClick={() => setShowAdminLogin(false)}
+                  className="w-full text-white/40 hover:text-white hunt-text text-xs transition-colors pt-4"
+                >
+                  [ Cancel ]
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="pointer-events-none absolute inset-0 z-40 bg-[url('https://www.transparenttextures.com/patterns/dust.png')] opacity-20" />
+    </div>
+  );
+}
