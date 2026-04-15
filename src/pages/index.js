@@ -224,9 +224,9 @@ export default function Login() {
               <motion.button
                 disabled={loading}
                 whileHover={{ scale: 1.01 }}
-                className="w-full bg-[#d4af37] text-black py-5 font-black text-base tracking-[0.4em] uppercase transition-all shadow-[0_0_30px_rgba(212,175,55,0.3)] disabled:opacity-50 mt-6"
+                className="w-full bg-[#d4af37] text-black py-4 font-black text-lg tracking-[0.2em] uppercase transition-all shadow-[0_0_20px_rgba(212,175,55,0.3)] disabled:opacity-50 mt-6 rounded-sm"
               >
-                {loading ? 'Decrypting...' : 'Start Game'}
+                {loading ? 'Authenticating...' : 'Start Game'}
               </motion.button>
             </motion.form>
           )}

@@ -87,29 +87,29 @@ export default function AdminDashboard() {
           <div className="space-y-4">
             <div className="flex items-center gap-3">
                <div className="w-2 h-2 bg-red-600 animate-pulse rounded-full shadow-[0_0_12px_red]" />
-               <p className="data-font text-[10px] tracking-[0.5em] text-red-500 font-black">Oracle_System_Online // Sync: {lastSync}</p>
+               <p className="data-font text-[10px] tracking-[0.2em] text-red-500 font-bold uppercase">System Live • Sync: {lastSync}</p>
             </div>
             <h1 className="legend-font text-6xl md:text-8xl tracking-tighter text-white leading-none">
-              ELDER&apos;S <span className="text-[#d4af37] chamber-glow">WATCH</span>
+              ADMIN <span className="text-[#d4af37] chamber-glow">PANEL</span>
             </h1>
             <nav className="flex flex-wrap gap-x-10 gap-y-4 pt-4">
-              <Link href="#" className="data-font text-[11px] tracking-[0.4em] text-[#d4af37] border-b-2 border-[#d4af37] pb-1 font-bold">EXPEDITIONS</Link>
-              <Link href="/admin/clues" className="data-font text-[11px] tracking-[0.4em] opacity-30 hover:opacity-100 hover:text-[#d4af37] transition-all pb-1 font-bold">FORGE_CLUES</Link>
-              <button onClick={handleLogout} className="data-font text-[11px] tracking-[0.4em] text-red-500/60 hover:text-red-500 transition-all font-bold">BYPASS_LOGOUT</button>
+              <Link href="#" className="data-font text-[11px] tracking-[0.2em] text-[#d4af37] border-b-2 border-[#d4af37] pb-1 font-bold">ALL TEAMS</Link>
+              <Link href="/admin/clues" className="data-font text-[11px] tracking-[0.2em] opacity-50 hover:opacity-100 hover:text-[#d4af37] transition-all pb-1 font-bold">MANAGE CLUES</Link>
+              <button onClick={handleLogout} className="data-font text-[11px] tracking-[0.2em] text-red-500/80 hover:text-red-500 transition-all font-bold">LOGOUT</button>
             </nav>
           </div>
 
           <div className="flex gap-16 p-6 glass-tablet rounded-sm">
             <div className="text-center">
-              <p className="data-font text-[10px] opacity-40 tracking-widest mb-2">Soul_Count</p>
+              <p className="data-font text-[10px] opacity-60 tracking-widest mb-2 uppercase">Total Teams</p>
               <p className="legend-font text-5xl text-white">{teams.length}</p>
             </div>
             <div className="text-center">
-              <p className="data-font text-[10px] opacity-40 tracking-widest mb-2 text-green-500/60">Exploring</p>
+              <p className="data-font text-[10px] opacity-60 tracking-widest mb-2 text-green-500/80 uppercase">Active</p>
               <p className="legend-font text-5xl text-green-500">{stats.active}</p>
             </div>
             <div className="text-center">
-              <p className="data-font text-[10px] opacity-40 tracking-widest mb-2 text-red-500/60">Perished</p>
+              <p className="data-font text-[10px] opacity-60 tracking-widest mb-2 text-red-500/80 uppercase">Eliminated</p>
               <p className="legend-font text-5xl text-red-600">{stats.eliminated}</p>
             </div>
           </div>
@@ -144,7 +144,7 @@ export default function AdminDashboard() {
                     <span className={`legend-font text-4xl leading-none ${team.status === 'ELIMINATED' ? 'text-red-900' : 'text-white chamber-glow'}`}>
                       {team.current_sector}
                     </span>
-                    <p className="data-font text-[8px] opacity-50 mt-1 tracking-tighter">SEC</p>
+                    <p className="data-font text-[10px] opacity-70 mt-1 tracking-widest">ROUND</p>
                   </div>
                 </div>
 
@@ -156,13 +156,13 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-x-8 gap-y-2 max-w-md">
-                    <div className="data-font text-[10px] flex flex-col">
-                      <span className="opacity-30">Commander</span>
-                      <span className="text-[#f4e4bc]">{team.leader_name}</span>
+                    <div className="data-font text-[11px] flex flex-col">
+                      <span className="opacity-50 tracking-wider">Team Leader</span>
+                      <span className="text-[#f4e4bc] font-bold">{team.leader_name}</span>
                     </div>
-                    <div className="data-font text-[10px] flex flex-col">
-                      <span className="opacity-30">Signal</span>
-                      <span className="text-[#f4e4bc]">{team.leader_phone}</span>
+                    <div className="data-font text-[11px] flex flex-col">
+                      <span className="opacity-50 tracking-wider">Contact No</span>
+                      <span className="text-[#f4e4bc] font-bold">{team.leader_phone}</span>
                     </div>
                   </div>
                 </div>
@@ -183,17 +183,17 @@ export default function AdminDashboard() {
               </div>
 
               <div className="w-full lg:w-auto text-center lg:text-right">
-                <div className={`inline-block min-w-[200px] px-8 py-4 border-2 text-[12px] font-black tracking-[0.5em] shadow-2xl ${
+                <div className={`inline-block min-w-[180px] px-8 py-3 border-2 text-[14px] font-bold tracking-[0.2em] shadow-lg ${
                   team.status === 'ELIMINATED'
                     ? 'border-red-900 text-red-600 bg-red-950/20'
                     : team.status === 'FINISHED'
                     ? 'border-green-700 text-green-500 bg-green-950/20'
                     : 'border-[#d4af37] text-[#d4af37] bg-white/5'
                 }`}>
-                  {team.status === 'ELIMINATED' ? 'EXPEDITION_FAILED' : team.status === 'FINISHED' ? 'MISSION_COMPLETE' : 'SIGNAL_ACTIVE'}
+                  {team.status === 'ELIMINATED' ? 'ELIMINATED' : team.status === 'FINISHED' ? 'FINISHED' : 'ACTIVE'}
                 </div>
-                <p className="data-font text-[8px] opacity-30 mt-3 tracking-widest">
-                   UID: {team.id.toString().substring(0,8)}...
+                <p className="data-font text-[10px] opacity-40 mt-3 tracking-wider lowercase">
+                   Team ID: {team.id.toString().substring(0,8)}
                 </p>
               </div>
             </motion.div>
@@ -201,8 +201,8 @@ export default function AdminDashboard() {
         </AnimatePresence>
 
         {teams.length === 0 && (
-          <div className="text-center py-40 border-2 border-dashed border-[#d4af37]/10 rounded-sm">
-            <p className="legend-font text-2xl opacity-20 tracking-[1em] animate-pulse">Scanning for souls...</p>
+          <div className="text-center py-40 border-2 border-dashed border-[#d4af37]/30 rounded-lg">
+            <p className="legend-font text-2xl opacity-50 tracking-[0.2em]">WAITING FOR TEAMS...</p>
           </div>
         )}
       </main>

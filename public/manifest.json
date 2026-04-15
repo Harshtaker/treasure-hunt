@@ -1,0 +1,17 @@
+{
+  "name": "The Maze",
+  "short_name": "The Maze",
+  "description": "Ambedkar Nagar Treasure Hunt Portal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#d4af37",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
