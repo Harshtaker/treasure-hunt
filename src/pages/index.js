@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { usePlayerStore, useAdminStore } from '../lib/store';
 
-export default function Login() {
+export default function Index() {
   const [loading, setLoading] = useState(false);
   const [initialDelay, setInitialDelay] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -32,11 +32,11 @@ export default function Login() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     setHydrated(true);
-    
+
     // Check if app is not running in standalone (PWA) mode AND hasn't been dismissed
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
     const dismissed = localStorage.getItem('maze_install_dismissed');
-    
+
     if (!isStandalone && !dismissed) {
       setShowInstallGate(true);
     }
@@ -56,10 +56,10 @@ export default function Login() {
       console.log('App was successfully installed!');
       try {
         await supabase.rpc('increment_install');
-      } catch (e) {}
+      } catch (e) { }
     };
     window.addEventListener('appinstalled', handleInstall);
-    
+
     return () => {
       window.removeEventListener('appinstalled', handleInstall);
       clearTimeout(timer);
@@ -119,34 +119,34 @@ export default function Login() {
           .hunt-title { font-family: 'Cinzel', serif; }
           .hunt-text { font-family: 'Space Mono', monospace; }
         `}</style>
-        
+
         <div className="absolute inset-0 z-0 bg-[url('/cave.webp')] bg-cover opacity-20 grayscale brightness-50 pointer-events-none" />
-        
-        <motion.div 
-          initial={{ scale: 0.9, opacity: 0 }} 
-          animate={{ scale: 1, opacity: 1 }} 
+
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
           className="z-10 bg-black/80 border border-[#d4af37]/30 p-8 md:p-12 max-w-md w-full backdrop-blur-md rounded-lg shadow-[0_0_40px_rgba(212,175,55,0.15)]"
         >
           <img src="/icon.png" alt="App Icon" className="w-24 h-24 mx-auto mb-6 rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.4)] border border-[#d4af37]/40 p-1" />
-          
+
           <h2 className="hunt-title text-2xl md:text-3xl text-white mb-2 uppercase drop-shadow-[0_0_15px_rgba(212,175,55,0.5)]">Install App</h2>
           <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-[#d4af37]/50 to-transparent my-4" />
-          
+
           <p className="text-[#f4e4bc] text-sm md:text-base opacity-80 mb-8 leading-relaxed">
             For maximum stability and fullscreen mode, you must install The Maze on your device before starting.
           </p>
 
           <div className="space-y-4 text-left hunt-text text-[11px] text-[#d4af37] opacity-90 tracking-widest bg-black/60 p-5 border border-white/10 rounded-md mb-8 shadow-inner">
             <p className="leading-relaxed">
-              <strong className="text-white">iOS (Safari):</strong><br/>Tap the Share icon <span className="text-white border border-white/30 px-1 rounded mx-1 pb-1">[↑]</span> at the bottom, then scroll down and tap &quot;Add to Home Screen&quot; <span className="text-white border border-white/30 px-1 rounded mx-1 pb-1">[+]</span>.
+              <strong className="text-white">iOS (Safari):</strong><br />Tap the Share icon <span className="text-white border border-white/30 px-1 rounded mx-1 pb-1">[↑]</span> at the bottom, then scroll down and tap &quot;Add to Home Screen&quot; <span className="text-white border border-white/30 px-1 rounded mx-1 pb-1">[+]</span>.
             </p>
             <div className="h-[1px] bg-white/10 w-full" />
             <p className="leading-relaxed">
-              <strong className="text-white">Android (Chrome):</strong><br/>Tap the Menu icon <span className="text-white border border-white/30 px-1 rounded mx-1 pb-1">[⋮]</span> at the top right, then tap &quot;Install app&quot; or &quot;Add to Home screen&quot;.
+              <strong className="text-white">Android (Chrome):</strong><br />Tap the Menu icon <span className="text-white border border-white/30 px-1 rounded mx-1 pb-1">[⋮]</span> at the top right, then tap &quot;Install app&quot; or &quot;Add to Home screen&quot;.
             </p>
           </div>
 
-          <button 
+          <button
             onClick={() => {
               localStorage.setItem('maze_install_dismissed', 'true');
               setShowInstallGate(false);
@@ -182,7 +182,7 @@ export default function Login() {
       <div className="absolute inset-0 bg-[url('/cave.webp')] bg-cover bg-center opacity-30 grayscale pointer-events-none z-0" />
       <div className="absolute inset-0 ambient-vignette pointer-events-none z-0" />
       <div className="absolute inset-0 z-0 bg-[url('/fog.png')] bg-cover opacity-20 animate-pulse pointer-events-none mix-blend-screen" />
-      
+
       {/* LANTERN (Top Right) */}
       <motion.img
         animate={{ y: [0, -15, 0], rotate: [0, -2, 0] }}
@@ -260,7 +260,7 @@ export default function Login() {
                 <div className="text-center mb-6">
                   <h2 className="f-h text-xl sm:text-2xl text-[#d4af37] font-black uppercase tracking-widest drop-shadow-[0_0_10px_rgba(212,175,55,0.4)]">Identify Your Crew</h2>
                 </div>
-                
+
                 <AnimatePresence mode="wait">
                   {errorMsg && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="text-[#ffcdd2] text-[10px] sm:text-[11px] text-center font-bold uppercase tracking-widest bg-red-900/40 py-3 border border-red-500/30 rounded-sm mb-4 block shadow-[0_0_15px_rgba(255,0,0,0.3)]">
@@ -294,7 +294,7 @@ export default function Login() {
                     <span className="drop-shadow-[0_1px_2px_rgba(255,255,255,0.5)]">{loading ? 'Verifying...' : 'Set Sail ⚓'}</span>
                   </button>
                 </div>
-                
+
                 <button type="button" onClick={() => setMode('IDLE')} className="w-full text-white/50 f-b text-[10px] sm:text-xs uppercase hover:text-white transition-colors mt-6 font-bold pt-4">
                   ← Return to Dock
                 </button>
