@@ -37,6 +37,7 @@ export const usePlayerStore = create(
               current_sector: localTeam.current_sector,
               last_clue_start: localTeam.last_clue_start,
               status: localTeam.status,
+              total_time_bank: localTeam.total_time_bank,
             })
             .eq('id', localTeam.id)
             .then(({ error }) => {
@@ -55,6 +56,8 @@ export const usePlayerStore = create(
             current_sector: dbData.current_sector || 0,
             last_clue_start: dbData.last_clue_start,
             status: dbData.status || 'ACTIVE',
+            current_phase: dbData.current_phase || 'WAITING',
+            total_time_bank: dbData.total_time_bank || 0,
           },
           revealedClue: null,
           isEliminated: dbData.status === 'ELIMINATED',
@@ -85,55 +88,73 @@ export const usePlayerStore = create(
 
       /**
        * Called after a successful QR scan.
-       * 1. IMMEDIATELY updates Zustand (auto-persisted to localStorage)
-       * 2. DIRECTLY updates the teams table in Supabase (not an RPC)
-       * 3. Broadcasts the event to admin
+       * 1. Calculates round duration and updates total_time_bank
+       * 2. Handles the 6-QR sequence flow
+       * 3. Syncs immediately to Supabase
        */
       advanceRound: async (targetRound, clueData) => {
         const { team } = get();
         if (!team) return null;
 
-        const isFinal = targetRound === 5;
-        const now = new Date().toISOString();
-        let timeTaken = 0;
-        
-        if (isFinal && team.created_at) {
-           timeTaken = Math.floor((new Date(now).getTime() - new Date(team.created_at).getTime()) / 1000);
+        const now = new Date();
+        const nowISO = now.toISOString();
+
+        // FIXED: 6 QR Flow logic
+        const isFinal = targetRound === 6;
+        const isCove = targetRound === 3;
+        const isResume = targetRound === 4;
+
+        let sessionSeconds = 0;
+
+        // Calculate time spent in the current round only if clock is running
+        if (team.last_clue_start && team.current_phase !== 'COVE' && team.current_sector > 0) {
+          const startTime = new Date(team.last_clue_start).getTime();
+          sessionSeconds = Math.floor((now.getTime() - startTime) / 1000);
         }
+
+        // Update the accumulated time bank
+        const newTimeBank = (team.total_time_bank || 0) + sessionSeconds;
+
+        let targetPhase = 'SAILING';
+        if (isFinal) targetPhase = 'FINISHED';
+        if (isCove) targetPhase = 'COVE';
 
         const nextTeam = {
           ...team,
           current_sector: targetRound,
-          last_clue_start: now,
+          last_clue_start: isCove ? null : nowISO, // Pause clock at Cove
+          current_phase: targetPhase,
           status: isFinal ? 'FINISHED' : 'ACTIVE',
-          ...(isFinal && { total_time_taken: timeTaken })
+          total_time_bank: newTimeBank,
+          total_time_taken: newTimeBank // Backup for UI sorting
         };
 
+        // UI Clue Logic
+        const nextClue = (isFinal || isCove) ? null : clueData.riddle_text;
+
         // ========== STEP 1: INSTANT LOCAL SAVE ==========
-        // Zustand persist middleware auto-saves this to localStorage
         set({
           team: nextTeam,
-          revealedClue: isFinal ? null : clueData.riddle_text,
+          revealedClue: nextClue,
           isFinished: isFinal,
         });
 
-        // ========== STEP 2: DIRECT DB UPDATE (NOT RPC) ==========
-        // This is the critical fix — we directly update the teams table
-        // so the data is in DB for re-login AND triggers Realtime for admin
+        // ========== STEP 2: DIRECT DB UPDATE ==========
         try {
           const { error } = await supabase
             .from('teams')
             .update({
               current_sector: targetRound,
-              last_clue_start: now,
+              last_clue_start: isCove ? null : nowISO,
+              current_phase: targetPhase,
               status: isFinal ? 'FINISHED' : 'ACTIVE',
-              ...(isFinal && { total_time_taken: timeTaken })
+              total_time_bank: newTimeBank,
+              total_time_taken: newTimeBank
             })
             .eq('id', team.id);
 
           if (error) {
             console.error('DB update failed, will retry:', error);
-            // Queue a retry after 3 seconds
             setTimeout(async () => {
               const retryState = get().team;
               if (retryState && retryState.id === team.id) {
@@ -142,7 +163,9 @@ export const usePlayerStore = create(
                   .update({
                     current_sector: retryState.current_sector,
                     last_clue_start: retryState.last_clue_start,
+                    current_phase: retryState.current_phase,
                     status: retryState.status,
+                    total_time_bank: retryState.total_time_bank,
                   })
                   .eq('id', team.id);
               }
@@ -163,42 +186,22 @@ export const usePlayerStore = create(
               teamId: team.id,
               round: targetRound,
               status: isFinal ? 'FINISHED' : 'ACTIVE',
-              timestamp: now,
+              timestamp: nowISO,
             },
           });
-        } catch (_) {
-          /* broadcast is non-critical */
-        }
-
-        // ========== STEP 4: ALSO CALL RPC IF IT EXISTS (BELT + SUSPENDERS) ==========
-        try {
-          supabase
-            .rpc('scan_success_trigger', {
-              t_id: team.id,
-              target_round: targetRound,
-              start_time: now,
-            })
-            .then();
-        } catch (_) {
-          /* RPC may not exist — that's fine, direct update already handled it */
-        }
+        } catch (_) { }
 
         return nextTeam;
       },
 
       /**
-       * Called after a failed QR scan (wrong location).
-       * Increments failed_scans in the database.
+       * Called after a failed QR scan.
        */
       recordFailedScan: async () => {
         const { team } = get();
         if (!team) return;
 
         try {
-          // Fire and forget increment
-          supabase.rpc('increment_failed_scans', { t_id: team.id }).then();
-          
-          // Fallback if RPC doesn't exist: fetch and increment
           const { data } = await supabase.from('teams').select('failed_scans').eq('id', team.id).single();
           if (data) {
             await supabase.from('teams').update({ failed_scans: (data.failed_scans || 0) + 1 }).eq('id', team.id);
@@ -209,16 +212,13 @@ export const usePlayerStore = create(
       },
 
       /**
-       * Called on page load — reconciles localStorage vs DB.
-       * Only updates local if DB is strictly AHEAD.
-       * If local is ahead, pushes local state to DB.
+       * Reconciles localStorage vs DB on page load.
        */
       syncFromDB: async () => {
         const { team } = get();
         if (!team) return;
 
         try {
-          // Fetch latest team state from DB
           const { data: db } = await supabase
             .from('teams')
             .select('*')
@@ -227,7 +227,6 @@ export const usePlayerStore = create(
 
           if (!db) return;
 
-          // Check terminal states first
           if (db.status === 'ELIMINATED') {
             set({ isEliminated: true, team: { ...team, status: 'ELIMINATED' } });
             return;
@@ -237,19 +236,10 @@ export const usePlayerStore = create(
             return;
           }
 
-          if (db.current_sector > team.current_sector) {
-            // DB is ahead — update local
-            const updatedTeam = {
-              id: db.id,
-              team_name: db.team_name,
-              current_sector: db.current_sector,
-              last_clue_start: db.last_clue_start,
-              status: db.status,
-            };
-            set({ team: updatedTeam });
+          if (db.current_sector > team.current_sector || db.current_phase !== team.current_phase) {
+            set({ team: { ...db } });
 
-            // Fetch clue for the new sector
-            if (db.current_sector > 0) {
+            if (db.current_sector > 0 && db.current_phase === 'SAILING') {
               const { data: clue } = await supabase
                 .from('clue_settings')
                 .select('riddle_text')
@@ -258,22 +248,20 @@ export const usePlayerStore = create(
               if (clue) set({ revealedClue: clue.riddle_text });
             }
           } else if (team.current_sector > (db.current_sector || 0)) {
-            // LOCAL is ahead of DB — push local state to DB (recovery scenario)
-            console.log('Local ahead of DB, syncing up. Local:', team.current_sector, 'DB:', db.current_sector);
             await supabase
               .from('teams')
               .update({
                 current_sector: team.current_sector,
                 last_clue_start: team.last_clue_start,
                 status: team.status,
+                total_time_bank: team.total_time_bank
               })
               .eq('id', team.id);
           }
 
-          // Fetch current clue if we have an active sector but no clue text
           const currentClue = get().revealedClue;
           const currentSector = get().team?.current_sector;
-          if (currentSector > 0 && !currentClue) {
+          if (currentSector > 0 && !currentClue && db.current_phase === 'SAILING') {
             const { data: clue } = await supabase
               .from('clue_settings')
               .select('riddle_text')
@@ -287,7 +275,7 @@ export const usePlayerStore = create(
       },
     }),
     {
-      name: 'maze-player-session', // localStorage key
+      name: 'maze-player-session',
       partialize: (state) => ({
         team: state.team,
         revealedClue: state.revealedClue,
@@ -315,7 +303,6 @@ export const useAdminStore = create(
       loginAdmin: () => set({ isAdmin: true }),
 
       logoutAdmin: () => {
-        // Clean up realtime subscriptions
         const cleanup = get()._realtimeCleanup;
         if (typeof cleanup === 'function') cleanup();
         set({
@@ -332,7 +319,7 @@ export const useAdminStore = create(
             .from('teams')
             .select('*')
             .order('current_sector', { ascending: false })
-            .order('last_clue_start', { ascending: true });
+            .order('total_time_bank', { ascending: true });
 
           if (error) {
             console.error('Failed to fetch teams:', error);
@@ -356,47 +343,22 @@ export const useAdminStore = create(
         }
       },
 
-      /**
-       * Sets up Supabase Realtime on the teams table.
-       * Listens for INSERT, UPDATE, DELETE events and re-fetches.
-       * Also listens for broadcast scan events for double coverage.
-       */
       subscribeRealtime: () => {
         const fetchFn = get().fetchTeams;
 
-        // Channel 1: Postgres Changes (fires when teams table is updated)
         const pgChannel = supabase
           .channel('admin-pg-changes')
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'teams' },
-            () => fetchFn()
-          )
-          .on(
-            'postgres_changes',
-            { event: 'UPDATE', schema: 'public', table: 'teams' },
-            () => fetchFn()
-          )
-          .on(
-            'postgres_changes',
-            { event: 'DELETE', schema: 'public', table: 'teams' },
-            () => fetchFn()
-          )
-          .subscribe((status) => {
-            console.log('Realtime PG status:', status);
-          });
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'teams' }, () => fetchFn())
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'teams' }, () => fetchFn())
+          .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'teams' }, () => fetchFn())
+          .subscribe();
 
-        // Channel 2: Broadcast (fires when player sends scan_event)
         const broadcastChannel = supabase
           .channel('live_monitoring')
           .on('broadcast', { event: 'scan_event' }, (payload) => {
-            console.log('Scan event received:', payload);
-            // Small delay to let the DB write complete before fetching
             setTimeout(() => fetchFn(), 500);
           })
-          .subscribe((status) => {
-            console.log('Realtime Broadcast status:', status);
-          });
+          .subscribe();
 
         const cleanup = () => {
           supabase.removeChannel(pgChannel);
@@ -404,15 +366,13 @@ export const useAdminStore = create(
         };
 
         set({ _realtimeCleanup: cleanup });
-
         return cleanup;
       },
     }),
     {
-      name: 'maze-admin-session', // localStorage key
+      name: 'maze-admin-session',
       partialize: (state) => ({
         isAdmin: state.isAdmin,
-        // Don't persist teams/stats — always fetch fresh
       }),
     }
   )

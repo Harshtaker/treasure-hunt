@@ -18,7 +18,7 @@ export default function Dashboard() {
   const syncFromDB = usePlayerStore((s) => s.syncFromDB);
   const logout = usePlayerStore((s) => s.logout);
 
-  // --- Local UI state (not persisted) ---
+  // --- Local UI state ---
   const [timeLeft, setTimeLeft] = useState(2400);
   const [isScanning, setIsScanning] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
@@ -26,47 +26,108 @@ export default function Dashboard() {
   const [hydrated, setHydrated] = useState(false);
   const [cameraError, setCameraError] = useState(null);
 
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState([]);
+
+  const [timeOffset, setTimeOffset] = useState(0);
+  const [currentPhase, setCurrentPhase] = useState('WAITING');
+
   const router = useRouter();
   const scannerRef = useRef(null);
   const teamRef = useRef(null);
   const revealedClueRef = useRef(null);
   const isProcessingRef = useRef(false);
 
-  // Keep refs in sync with Zustand state
+  // Keep refs in sync
   useEffect(() => { teamRef.current = team; }, [team]);
   useEffect(() => { revealedClueRef.current = revealedClue; }, [revealedClue]);
   useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
 
   // =========================
+  // 0. TIME SYNC
+  // =========================
+  useEffect(() => {
+    fetch('/api/time')
+      .then((res) => res.json())
+      .then((data) => {
+        setTimeOffset(data.serverTime - Date.now());
+      })
+      .catch((err) => console.error('Time sync failed', err));
+  }, []);
+
+  // =========================
   // 1. HYDRATION + RECOVERY
   // =========================
   useEffect(() => {
-    // Wait for Zustand to hydrate from localStorage
     const unsub = usePlayerStore.persist.onFinishHydration(() => {
       setHydrated(true);
     });
-
-    // If already hydrated (hot reload / fast refresh)
     if (usePlayerStore.persist.hasHydrated()) {
       setHydrated(true);
     }
-
     return () => { if (typeof unsub === 'function') unsub(); };
   }, []);
 
+  // Sync Logic to fetch clue text on load or realtime update
+  const fetchClueDirectly = useCallback(async (currentSector) => {
+    if (!teamRef.current || currentSector === 0) return;
+    const { data } = await supabase
+      .from('clue_settings')
+      .select('riddle_text')
+      .eq('team_id', teamRef.current.id)
+      .eq('chamber_number', currentSector)
+      .maybeSingle();
+    if (data?.riddle_text) setRevealedClue(data.riddle_text);
+  }, [setRevealedClue]);
+
   useEffect(() => {
     if (!hydrated) return;
-
     const currentTeam = usePlayerStore.getState().team;
     if (!currentTeam) {
       router.push('/');
       return;
     }
 
-    // Background sync with DB (non-blocking)
-    // This also pushes local-ahead state to DB if needed
     syncFromDB();
-  }, [hydrated, router, syncFromDB]);
+    fetchClueDirectly(currentTeam.current_sector);
+
+    const playerChannel = supabase
+      .channel(`player-${currentTeam.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'teams', filter: `id=eq.${currentTeam.id}` },
+        (payload) => {
+          usePlayerStore.getState().login(payload.new);
+          syncFromDB();
+          fetchClueDirectly(payload.new.current_sector);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(playerChannel);
+    };
+  }, [hydrated, router, syncFromDB, fetchClueDirectly]);
+
+  useEffect(() => {
+    if (team) {
+      let phase = team.current_phase || 'SAILING';
+      if (team.status === 'ELIMINATED' || team.current_phase === 'PLANKED') phase = 'PLANKED';
+      else if (team.current_phase === 'COVE') phase = 'COVE';
+      else if (team.status === 'FINISHED') phase = 'FINISHED';
+      else if (team.current_phase === 'RELEASED') phase = 'RELEASED';
+      else if (team.current_sector === 0) phase = 'WAITING';
+
+      setCurrentPhase((prevPhase) => {
+        if (prevPhase === 'COVE' && phase === 'SAILING') {
+          if (window.navigator?.vibrate) {
+            window.navigator.vibrate([300, 100, 300, 100, 300, 200, 500, 200, 500]);
+          }
+        }
+        return phase;
+      });
+    }
+  }, [team]);
 
   // =========================
   // 2. LOGOUT
@@ -78,16 +139,8 @@ export default function Dashboard() {
     }
   };
 
-  // Full logout (clears all data)
-  const handleFullLogout = () => {
-    if (confirm('WARNING: This will clear ALL saved progress from this device. Continue?')) {
-      logout();
-      router.push('/');
-    }
-  };
-
   // =========================
-  // 3. SCAN LOGIC
+  // 3. SCAN LOGIC (STRICT 6 QR FLOW)
   // =========================
   const onScanSuccess = useCallback(async (decodedText) => {
     if (isProcessingRef.current) return;
@@ -95,24 +148,29 @@ export default function Dashboard() {
     setIsProcessing(true);
 
     if (scannerRef.current) {
-      try { await scannerRef.current.pause(true); } catch (_) {}
+      try { await scannerRef.current.pause(true); } catch (_) { }
     }
 
     const code = decodedText.trim().toUpperCase();
     const currentTeam = teamRef.current;
-    const targetRound = !revealedClueRef.current ? 1 : currentTeam.current_sector + 1;
 
     try {
-      // DB Check for QR Validity
+      const { data: dbTeam } = await supabase.from('teams').select('current_sector').eq('id', currentTeam.id).single();
+      const actualSector = dbTeam ? dbTeam.current_sector : currentTeam.current_sector;
+
+      // STRICT FLOW: Target is NEXT Beacon (1 through 6)
+      const targetBeacon = actualSector + 1;
+
       const { data: clueData } = await supabase
         .from('clue_settings')
         .select('*')
-        .eq('chamber_number', targetRound)
+        .eq('team_id', currentTeam.id)
+        .eq('chamber_number', targetBeacon)
         .eq('qr_secret_key', code)
         .maybeSingle();
 
       if (!clueData) {
-        setMsg({ type: 'error', text: 'WRONG LOCATION' });
+        setMsg({ type: 'error', text: 'INVALID SEAL' });
         recordFailedScan();
         setTimeout(() => {
           setMsg({ type: '', text: '' });
@@ -123,28 +181,25 @@ export default function Dashboard() {
         return;
       }
 
-      const isFinal = targetRound === 5;
+      // Advance State (QR-1 starts clock, QR-3 pauses/cove, QR-6 wins)
+      await advanceRound(targetBeacon, clueData);
 
-      // advanceRound() does ALL of these atomically:
-      // 1. Updates Zustand (auto-persisted to localStorage)
-      // 2. Direct UPDATE to teams table in Supabase
-      // 3. Broadcasts scan event to admin
-      // 4. Calls RPC if it exists (belt + suspenders)
-      await advanceRound(targetRound, clueData);
+      // Update local clue immediately for the UI
+      setRevealedClue(clueData.riddle_text);
 
-      // Reset timer for new round
-      if (!isFinal) {
-        setTimeLeft(2400);
-      }
+      let successMsg = 'DECRYPTED';
+      if (targetBeacon === 1) successMsg = 'HUNT STARTED!';
+      if (targetBeacon === 3) successMsg = 'MILESTONE REACHED';
+      if (targetBeacon === 6) successMsg = 'VICTORY';
 
-      setMsg({ type: 'success', text: isFinal ? 'VICTORY' : 'LEVEL UNLOCKED' });
+      setMsg({ type: 'success', text: successMsg });
 
       setTimeout(() => {
         setIsScanning(false);
         setIsProcessing(false);
         isProcessingRef.current = false;
         setMsg({ type: '', text: '' });
-      }, 500);
+      }, 1500);
 
       if (window.navigator.vibrate) window.navigator.vibrate(100);
     } catch (e) {
@@ -152,77 +207,69 @@ export default function Dashboard() {
       setIsProcessing(false);
       isProcessingRef.current = false;
       if (scannerRef.current) {
-        try { await scannerRef.current.resume(); } catch (_) {}
+        try { await scannerRef.current.resume(); } catch (_) { }
       }
     }
-  }, [advanceRound]);
+  }, [advanceRound, recordFailedScan, setRevealedClue]);
 
   // =========================
-  // 4. TIMER LOGIC
+  // 4. TIMER LOGIC (START ON SCAN 1)
   // =========================
   useEffect(() => {
-    if (!revealedClue || !team?.last_clue_start || isEliminated || isFinished) return;
-    
-    // Calculate initial time remaining
-    const start = new Date(team.last_clue_start).getTime();
-    const initialElapsed = Math.floor((Date.now() - start) / 1000);
-    const initialRemaining = 2400 - initialElapsed;
-    
-    if (initialRemaining <= 0) {
-      setEliminated();
+    if (!team?.last_clue_start || team?.current_sector === 0 || currentPhase === 'WAITING' || currentPhase === 'COVE' || currentPhase === 'RELEASED') {
+      setTimeLeft(2400);
       return;
     }
-    
+
+    const calcTimer = () => {
+      const now = Date.now() + timeOffset;
+      const start = new Date(team.last_clue_start).getTime();
+      const elapsed = Math.floor((now - start) / 1000);
+      return Math.max(0, 2400 - elapsed);
+    };
+
+    const initialRemaining = calcTimer();
+    if (initialRemaining <= 0) {
+      if (currentPhase === 'SAILING' && team.current_sector > 0) setEliminated();
+      return;
+    }
     setTimeLeft(initialRemaining);
-    
+
     const timer = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - start) / 1000);
-      const remaining = 2400 - elapsed;
+      const remaining = calcTimer();
       if (remaining <= 0) {
-        setEliminated();
+        if (currentPhase === 'SAILING' && team.current_sector > 0) setEliminated();
         clearInterval(timer);
       } else {
         setTimeLeft(remaining);
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [team?.last_clue_start, revealedClue, isEliminated, isFinished, setEliminated]);
+  }, [team?.last_clue_start, currentPhase, team?.current_sector, setEliminated, timeOffset]);
 
   // =========================
-  // 5. CAMERA START LOGIC
+  // 5. CAMERA LOGIC
   // =========================
   const handleInitiateScan = async () => {
     try {
-      // 1. Explicitly request the stream - this triggers the browser's "Allow/Deny" popup
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }
       });
-
-      // 2. If the user clicks "Allow", the code continues here. Stop the test stream.
       stream.getTracks().forEach(track => track.stop());
-
-      // 3. Launch QR Scanner visually
       setCameraError(null);
       setIsScanning(true);
     } catch (err) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'NotFoundError') {
-        setCameraError("OPTICAL SENSORS OFFLINE");
-      } else {
-        alert("Camera Initialization Error: " + err.message);
-      }
+      setCameraError("SENSORS OFFLINE");
     }
   };
 
   useEffect(() => {
     let isMounted = true;
-    
     if (isScanning && !isEliminated && !isFinished) {
       const start = async () => {
         try {
-          // Delay heavily to prevent React StrictMode double-rendering crash
           await new Promise((res) => setTimeout(res, 200));
           if (!isMounted) return;
-
           scannerRef.current = new Html5Qrcode('reader');
           await scannerRef.current.start(
             { facingMode: 'environment' },
@@ -232,7 +279,7 @@ export default function Dashboard() {
         } catch (err) {
           if (isMounted) {
             setIsScanning(false);
-            setCameraError("OPTICAL SENSORS OFFLINE");
+            setCameraError("SENSORS OFFLINE");
           }
         }
       };
@@ -241,196 +288,205 @@ export default function Dashboard() {
     return () => {
       isMounted = false;
       if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.stop().catch(() => { });
       }
     };
   }, [isScanning, onScanSuccess, isEliminated, isFinished]);
 
-  // =========================
-  // 6. HELPERS
-  // =========================
   const formatTime = (s) => {
     const m = Math.floor(s / 60);
     const sc = s % 60;
     return `${m}:${sc < 10 ? '0' : ''}${sc}`;
   };
 
-  // --- RENDER ---
+  const fetchLeaderboard = async () => {
+    try {
+      const { data } = await supabase
+        .from('teams')
+        .select('team_name, total_time_taken, current_sector')
+        .order('current_sector', { ascending: false })
+        .order('total_time_taken', { ascending: true });
+      if (data) setLeaderboardData(data);
+      setShowLeaderboard(true);
+    } catch (_) { }
+  };
 
-  // Wait for hydration before rendering anything
   if (!hydrated || !team) return null;
 
-  if (isFinished)
-    return (
-      <div className="h-screen bg-[#050505] flex items-center justify-center text-white text-5xl f-h gold-glow text-center p-4">
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
-          .f-h { font-family: 'Cinzel', serif; }
-          .gold-glow { text-shadow: 0 0 15px rgba(212, 175, 55, 0.5); }
-        `}</style>
-        MISSION COMPLETE
+  // VIEWS (Full Page Overlays)
+  if (currentPhase === 'FINISHED') return (
+    <div className="h-screen bg-[#050505] flex flex-col items-center justify-center text-white text-center p-4 relative overflow-hidden">
+      <style jsx global>{` @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap'); .f-h { font-family: 'Cinzel', serif; } .gold-glow { text-shadow: 0 0 15px rgba(212, 175, 55, 0.5); } .glass-btn { background: rgba(5, 5, 5, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.1em; } `}</style>
+      <div className="absolute top-6 w-full flex justify-between px-6 z-20 max-w-lg">
+        <button onClick={() => router.push('/')} className="glass-btn px-4 py-2 f-b text-[10px] font-bold rounded-sm">[←] HOME</button>
+        <button onClick={handleLogout} className="glass-btn px-4 py-2 f-b text-[10px] font-bold rounded-sm border-red-500/30 text-red-400">[✖] LOGOUT</button>
       </div>
-    );
+      <motion.h1 initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-5xl md:text-7xl f-h gold-glow">MISSION COMPLETE</motion.h1>
+      <p className="mt-8 f-h text-xl text-[#d4af37] tracking-[0.3em]">YOU FOUND THE TREASURE</p>
+    </div>
+  );
 
-  if (isEliminated)
-    return (
-      <div className="h-screen bg-red-950 flex items-center justify-center text-white text-5xl f-h text-center p-4">
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
-          .f-h { font-family: 'Cinzel', serif; }
-        `}</style>
-        ELIMINATED
+  if (currentPhase === 'PLANKED') return (
+    <div className="h-screen bg-red-950 flex flex-col items-center justify-center text-white text-center p-4 relative">
+      <style jsx global>{` @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap'); .f-h { font-family: 'Cinzel', serif; } .glass-btn { background: rgba(5, 5, 5, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.1em; } `}</style>
+      <div className="absolute top-6 w-full flex justify-between px-6 z-20 max-w-lg">
+        <button onClick={() => router.push('/')} className="glass-btn px-4 py-2 f-b text-[10px] font-bold rounded-sm text-white">[←] HOME</button>
+        <button onClick={handleLogout} className="glass-btn px-4 py-2 f-b text-[10px] font-bold rounded-sm border-white/30 text-white">[✖] LOGOUT</button>
       </div>
-    );
+      <h1 className="text-6xl f-h drop-shadow-[0_0_20px_rgba(255,0,0,0.8)]">GAME OVER</h1>
+      <p className="mt-4 text-xl tracking-widest uppercase opacity-80 f-h">You walked the plank</p>
+    </div>
+  );
 
+  if (currentPhase === 'COVE') return (
+    <div className="h-screen bg-[#050505] flex flex-col items-center justify-center text-[#f4e4bc] text-center p-6 relative overflow-hidden">
+      <style jsx global>{` @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap'); .f-h { font-family: 'Cinzel', serif; } .cove-bg { background-image: radial-gradient(circle at center, rgba(15, 30, 45, 0.8) 0%, #050505 100%); } .glass-btn { background: rgba(5, 5, 5, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.1em; } `}</style>
+      <div className="absolute inset-0 cove-bg z-0" />
+      <div className="absolute top-6 w-full flex justify-between px-6 z-20 max-w-lg">
+        <button onClick={() => router.push('/')} className="glass-btn px-4 py-2 f-b text-[10px] font-bold rounded-sm">[←] HOME</button>
+        <button onClick={handleLogout} className="glass-btn px-4 py-2 f-b text-[10px] font-bold rounded-sm border-red-500/30 text-red-400">[✖] LOGOUT</button>
+      </div>
+      <div className="z-10 bg-black/60 border border-[#d4af37]/30 p-12 rounded-sm backdrop-blur-md shadow-2xl">
+        <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 4, repeat: Infinity }}>
+          <span className="text-6xl mb-6 block">⚓</span>
+        </motion.div>
+        <h2 className="f-h text-4xl text-[#d4af37] mb-4 uppercase font-black">CAVE TWO UNLOCKED</h2>
+        <p className="font-mono text-sm tracking-widest text-white uppercase mt-4">Progress Saved. Clock Stopped.</p>
+        <p className="font-mono text-xs tracking-widest opacity-60 mt-2 text-white uppercase leading-relaxed max-w-xs mx-auto">Wait for release and scan QR-4 beacon to re-ignite the hunt.</p>
+      </div>
+    </div>
+  );
+
+  // MAIN ACTIVE DASHBOARD
   return (
-    <div className="min-h-screen bg-[#050505] text-[#f4e4bc] flex flex-col items-center p-6 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-[#050505]">
       <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Space+Mono:wght@400;700&display=swap');
-        .f-h { font-family: 'Cinzel', serif; }
-        .f-b { font-family: 'Space Mono', monospace; }
-        .glass { background: rgba(0, 0, 0, 0.85); border: 1px solid rgba(212, 175, 55, 0.2); backdrop-filter: blur(10px); }
-        .gold-glow { text-shadow: 0 0 15px rgba(212, 175, 55, 0.5); }
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Space+Mono:wght@400;700&display=swap');
+        .f-h { font-family: 'Cinzel', serif; } .f-b { font-family: 'Space Mono', monospace; }
+        .gold-glow { text-shadow: 0 0 20px rgba(212, 175, 55, 0.8), 0 0 5px rgba(255, 255, 255, 0.4); }
+        .ambient-vignette { background: radial-gradient(circle, transparent 20%, rgba(5,5,5,0.98) 120%); }
+        .glass-panel { background: rgba(5, 5, 5, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(212, 175, 55, 0.2); box-shadow: 0 25px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5); }
+        .glass-btn { background: rgba(5, 5, 5, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.1em; }
+        .rope-line { position: absolute; top: 50%; left: 10%; right: 10%; height: 2px; background: rgba(212, 175, 55, 0.2); z-index: 0; transform: translateY(-50%); }
       `}</style>
 
-      <div className="fixed inset-0 z-0 opacity-20 bg-[url('/cave.webp')] bg-cover bg-center pointer-events-none" />
+      {/* AMBIENT EFFECTS */}
+      <div className="absolute inset-0 bg-[url('/cave.webp')] bg-cover bg-center opacity-30 grayscale pointer-events-none z-0" />
+      <div className="absolute inset-0 ambient-vignette pointer-events-none z-0" />
+      <div className="absolute inset-0 z-0 bg-[url('/fog.png')] bg-cover opacity-20 animate-pulse pointer-events-none mix-blend-screen" />
 
-      <header className="w-full max-w-lg z-10 mb-8 pt-4 flex justify-between items-start">
-        <div>
-          <h2 className="f-h text-2xl text-white uppercase gold-glow tracking-tighter">{team.team_name}</h2>
-          <p className="f-b text-[10px] text-[#d4af37] tracking-widest uppercase mt-1 opacity-70">
-            {revealedClue ? `Round 0${team.current_sector} Active` : 'Ready to Start'}
-          </p>
-        </div>
-        <button onClick={handleLogout} className="f-b text-[10px] text-white/30 border border-white/10 px-3 py-1 uppercase hover:bg-white/10 transition-all">
-          Logout
-        </button>
+      {/* TOP UTIL BAR */}
+      <header className="absolute top-6 w-full flex justify-between items-start pt-2 z-20 max-w-[95%] md:max-w-lg px-2">
+        <button onClick={handleLogout} className="glass-btn px-4 py-3 f-b text-[10px] font-bold rounded-sm border border-[#d4af37]/30 text-[#d4af37] bg-black/50"> [✖] Abandon </button>
+        <button onClick={fetchLeaderboard} className="glass-btn px-4 py-3 f-b text-[10px] font-bold rounded-sm flex items-center gap-2 border border-[#d4af37]/30 text-[#d4af37] bg-black/50"> Leaderboard <span className="text-[#d4af37] animate-pulse">●</span> </button>
       </header>
 
-      {/* TRACKER */}
-      <div className="w-full max-w-sm flex justify-between mb-10 z-10 px-4">
-        {[1, 2, 3, 4].map((n) => (
-          <div
-            key={n}
-            className={`w-10 h-10 rounded-full border-2 flex items-center justify-center f-h transition-all duration-700 ${
-              team.current_sector >= n && revealedClue
-                ? 'bg-[#d4af37] border-[#d4af37] text-black shadow-[0_0_15px_#d4af37]'
-                : 'border-white/10 text-white/20'
-            }`}
-          >
-            {n}
+      {/* MAIN CONTAINER */}
+      <main className="w-full max-w-[92%] md:max-w-md mt-16 relative z-10 flex flex-col items-center p-8 sm:p-10 glass-panel rounded-lg min-h-[500px]">
+        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
+        <h2 className="f-h text-2xl md:text-3xl text-white mt-2 uppercase gold-glow tracking-widest text-center font-bold"> Team: {team.team_name} </h2>
+
+        <div className="w-full flex-col sm:flex-row flex gap-6 my-8 px-4 justify-center items-center">
+          {/* Phase I Progress */}
+          <div className="glass-panel p-4 rounded-sm relative w-full sm:w-[220px] flex flex-col items-center">
+            <span className="text-[#d4af37] text-[10px] f-b mb-4 font-bold opacity-80 uppercase tracking-widest text-center">Phase I: Descent</span>
+            <div className="rope-line" />
+            <div className="flex justify-between w-full px-6 relative z-10 gap-4">
+              {[1, 2].map((n) => (
+                <div key={n} className={`w-10 h-10 rounded-full flex items-center justify-center f-h text-xl shadow-xl transition-all duration-700 ${team.current_sector >= n ? 'bg-[#d4af37] text-black border-2 border-white font-black' : 'bg-black/80 text-white/40 border border-white/20'}`}>{n}</div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
 
-      <div
-        className={`p-10 rounded-sm w-full max-w-xs text-center border-2 z-10 glass ${
-          !revealedClue ? 'opacity-40 border-white/10' : 'border-[#d4af37]'
-        }`}
-      >
-        <p className="f-b text-[10px] opacity-60 mb-2 uppercase">Chamber Clock</p>
-        <span
-          className={`text-6xl f-h tabular-nums ${
-            timeLeft < 300 && revealedClue ? 'text-red-500 animate-pulse' : 'text-white'
-          }`}
-        >
-          {formatTime(timeLeft)}
-        </span>
-      </div>
-
-      <main className="w-full max-w-md mt-10 flex-grow z-10">
-        <div className="glass rounded-sm p-8 min-h-[250px] flex flex-col items-center justify-center text-center border-t-2 border-t-[#d4af37]">
-          <AnimatePresence mode="wait">
-            {revealedClue ? (
-              <motion.div key="clue" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <span className="text-[#d4af37] text-[10px] f-b uppercase tracking-widest opacity-40">Ancient Scroll</span>
-                <p className="f-h text-2xl md:text-3xl text-white mt-4 italic leading-relaxed">"{revealedClue}"</p>
-              </motion.div>
-            ) : (
-              <div className="space-y-4 opacity-20">
-                <div className="w-16 h-16 border border-white rounded-full flex items-center justify-center mx-auto text-2xl f-h">?</div>
-                <p className="f-h text-white uppercase text-sm">Scan Round 01 to Start</p>
-              </div>
-            )}
-          </AnimatePresence>
+          {/* Phase II Progress */}
+          <div className="glass-panel p-4 rounded-sm relative w-full sm:w-[220px] flex flex-col items-center">
+            <span className="text-[#d4af37] text-[10px] f-b mb-4 font-bold opacity-80 uppercase tracking-widest text-center">Phase II: Final Path</span>
+            <div className="rope-line" />
+            <div className="flex justify-between w-full px-6 relative z-10 gap-4">
+              {[4, 6].map((n, i) => (
+                <div key={n} className={`w-10 h-10 rounded-full flex items-center justify-center f-h text-xl shadow-xl transition-all duration-700 ${team.current_sector >= n ? 'bg-[#d4af37] text-black border-2 border-white font-black' : 'bg-black/80 text-white/40 border border-white/20'}`}>{n === 6 ? '🏆' : '3'}</div>
+              ))}
+            </div>
+          </div>
         </div>
+
+        <div className="flex w-full items-stretch gap-4 mb-8 flex-col sm:flex-row mt-4">
+          <div className="flex-1 glass-panel p-8 flex flex-col items-center justify-center text-center min-h-[220px] rounded-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent" />
+            <span className="text-[#d4af37] text-xs f-b mb-4 font-bold opacity-70 tracking-widest uppercase">Decrypted Inscription</span>
+            <AnimatePresence mode="wait">
+              {(revealedClue && currentPhase === 'SAILING') ? (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} key={team.current_sector}>
+                  <p className="f-h text-xl sm:text-2xl text-white leading-relaxed font-bold uppercase drop-shadow-xl font-bold">"{revealedClue}"</p>
+                </motion.div>
+              ) : (
+                <div className="opacity-60 text-white flex flex-col items-center">
+                  <div className="w-12 h-12 border border-dashed border-[#d4af37]/50 rounded-full mb-3 flex items-center justify-center animate-pulse text-[#d4af37] f-b font-black text-xl">?</div>
+                  <p className="f-b text-[10px] uppercase font-bold text-[#d4af37] text-center px-4">
+                    {team.current_sector === 0 ? "Scan START Beacon (QR-1)" :
+                      currentPhase === 'RELEASED' ? "Scan Resume Seal (QR-4)" :
+                        `Locate QR-${team.current_sector + 1}`}
+                  </p>
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="sm:w-[130px] w-full shrink-0 flex flex-col items-center justify-center relative glass-panel rounded-sm py-4">
+            <span className="text-[#d4af37] text-[9px] f-b opacity-70 absolute top-4 uppercase tracking-[0.2em]">Time Bank</span>
+            <span className={`text-4xl f-h font-black tabular-nums ${timeLeft < 300 && currentPhase === 'SAILING' ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(timeLeft)}</span>
+          </div>
+        </div>
+
+        <button onClick={handleInitiateScan} className="w-full mt-auto py-5 bg-gradient-to-b from-[#003d33] to-[#00251a] text-[#ffd54f] border-2 border-[#d4af37] shadow-xl hover:brightness-125 f-h text-lg font-black uppercase rounded-sm active:scale-95 transition-all group overflow-hidden relative">
+          <span className="relative z-10 flex items-center justify-center gap-3">Scan Ancient Seal <span className="text-2xl">⨁</span></span>
+          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+        </button>
       </main>
 
-      <button
-        onClick={handleInitiateScan}
-        className="fixed bottom-10 w-full max-w-sm py-5 bg-[#d4af37] text-black f-h text-xl shadow-[0_0_40px_rgba(212,175,55,0.3)] z-20 uppercase font-black tracking-widest transition-transform"
-      >
-        Initiate Scan
-      </button>
-
-      {/* CAMERA ERROR OVERLAY */}
-      <AnimatePresence>
-        {cameraError && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-md"
-          >
-            <div className="border border-red-500/30 bg-red-950/20 p-10 max-w-sm text-center shadow-[0_0_50px_rgba(255,0,0,0.15)] relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-red-600 animate-pulse" />
-              <h2 className="f-h text-2xl md:text-3xl text-red-500 mb-6 drop-shadow-[0_0_15px_rgba(255,0,0,0.8)]">
-                {cameraError}
-              </h2>
-              <div className="h-[1px] w-full bg-red-500/20 mb-8" />
-              
-              <p className="f-b text-[#f4e4bc] text-sm mb-8 leading-relaxed opacity-90">
-                Your device has blocked camera access.
-              </p>
-              
-              <div className="f-b text-white text-[11px] mb-10 leading-relaxed bg-black/40 p-4 border border-white/5 rounded-sm">
-                <p>Tap the <strong>Lock / Settings (🔒)</strong> icon in your URL bar.</p>
-                <div className="h-[1px] w-full bg-white/10 my-3" />
-                <p>Toggle Camera to <strong>ON / Allow</strong>.</p>
-              </div>
-
-              <button 
-                onClick={() => setCameraError(null)} 
-                className="w-full py-4 bg-[#d4af37] text-black uppercase f-b text-xs font-black tracking-[0.2em] shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:scale-[1.02] transition-transform"
-              >
-                Acknowledge
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ERROR OVERLAY */}
+      <AnimatePresence>{cameraError && (
+        <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-md text-center">
+          <div className="border border-red-500/30 bg-red-950/20 p-10 max-w-sm shadow-2xl">
+            <h2 className="f-h text-2xl text-red-500 mb-6 uppercase font-bold">{cameraError}</h2>
+            <p className="f-b text-[#f4e4bc] text-sm mb-8 opacity-90 uppercase leading-relaxed">Permission Denied. Re-enable Camera in Browser Settings.</p>
+            <button onClick={() => setCameraError(null)} className="w-full py-4 bg-[#d4af37] text-black uppercase f-b text-xs font-black tracking-widest">Acknowledge</button>
+          </div>
+        </div>
+      )}</AnimatePresence>
 
       {/* SCANNER OVERLAY */}
-      <AnimatePresence>
-        {isScanning && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-8 backdrop-blur-xl"
-          >
-            <div className="w-full max-w-sm aspect-square relative rounded-sm overflow-hidden border-2 border-[#d4af37]/30 bg-black">
-              <div id="reader" className="w-full h-full scale-110"></div>
-              <AnimatePresence>
-                {msg.text && (
-                  <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className={`absolute inset-0 flex items-center justify-center z-[110] backdrop-blur-md ${
-                      msg.type === 'error' ? 'bg-red-600/80' : 'bg-[#d4af37]/90'
-                    }`}
-                  >
-                    <p className="f-h text-3xl text-white text-center font-black uppercase px-6 leading-tight">{msg.text}</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+      <AnimatePresence>{isScanning && (
+        <div className="fixed inset-0 z-[100] bg-black/98 flex flex-col items-center justify-center p-8 backdrop-blur-xl">
+          <div className="w-full max-w-sm aspect-square relative rounded-sm border-2 border-[#d4af37]/30 bg-black overflow-hidden shadow-2xl">
+            <div id="reader" className="w-full h-full scale-110"></div>
+            {msg.text && <div className={`absolute inset-0 flex items-center justify-center z-[110] backdrop-blur-md ${msg.type === 'error' ? 'bg-red-600/80' : 'bg-[#d4af37]/90'}`}><p className="f-h text-3xl text-white text-center uppercase px-6 font-bold">{msg.text}</p></div>}
+          </div>
+          <button onClick={() => setIsScanning(false)} className="mt-12 text-white/40 f-b uppercase text-sm border-b border-white/10 pb-1">Cancel Scan</button>
+        </div>
+      )}</AnimatePresence>
+
+      {/* LEADERBOARD OVERLAY */}
+      <AnimatePresence>{showLeaderboard && (
+        <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center p-6 backdrop-blur-xl overflow-y-auto">
+          <div className="w-full max-w-md py-10 flex flex-col items-center">
+            <h2 className="f-h text-3xl text-[#d4af37] mb-8 text-center uppercase tracking-widest font-black">Rankings</h2>
+            <div className="w-full flex flex-col gap-4 pb-20">
+              {leaderboardData.map((t, idx) => {
+                // If sector is 0, show 0:00 to solve the "registration time" bug
+                const displayTime = t.current_sector === 0 ? "0:00" : formatTime(t.total_time_taken || 0);
+                return (
+                  <div key={idx} className={`w-full glass-panel flex items-center justify-between p-4 ${t.team_name === team.team_name ? 'border-[#d4af37]/80 bg-[#d4af37]/10' : 'border-white/5'}`}>
+                    <div className="flex items-center gap-4 text-white"><span>{idx + 1}</span><span className="uppercase f-h font-bold">{t.team_name}</span></div>
+                    <span className="f-h text-white font-bold">{displayTime}</span>
+                  </div>
+                );
+              })}
             </div>
-            <button onClick={() => setIsScanning(false)} className="mt-12 text-white/40 f-b uppercase text-sm border-b border-white/10 pb-1">
-              Cancel
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <button onClick={() => setShowLeaderboard(false)} className="fixed bottom-10 px-10 py-3 glass-btn f-b text-xs uppercase font-black rounded-sm bg-black/80">Exit</button>
+          </div>
+        </div>
+      )}</AnimatePresence>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -6,257 +6,235 @@ import QRCode from 'qrcode';
 import { supabase } from '../../lib/supabase';
 import { useAdminStore } from '../../lib/store';
 
+// ==========================================
+// COLORED QR COMPONENT (Optimized for Scanning)
+// ==========================================
+const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
+  const [qrUrl, setQrUrl] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    if (clue?.qr_secret_key) {
+      const delay = clue.chamber_number * 150;
+      const timer = setTimeout(() => {
+        QRCode.toDataURL(clue.qr_secret_key, {
+          margin: 1,
+          scale: 8,
+          errorCorrectionLevel: 'H',
+          color: {
+            dark: teamColor, // QR dots are now specifically the team's color
+            light: '#ffffff' // White background is kept for scanner contrast
+          }
+        }).then(url => {
+          if (isMounted) setQrUrl(url);
+        }).catch(console.error);
+      }, delay);
+
+      return () => {
+        isMounted = false;
+        clearTimeout(timer);
+      };
+    }
+  }, [clue.qr_secret_key, teamColor, clue.chamber_number]);
+
+  return (
+    <div className="flex gap-4 p-4 border border-white/10 bg-black rounded-sm shadow-xl relative overflow-hidden">
+      {/* Visual indicator on the card side */}
+      <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: teamColor }} />
+
+      <div className="shrink-0 bg-white p-2 border-2 rounded-sm" style={{ borderColor: teamColor, minWidth: '104px', minHeight: '104px' }}>
+        {qrUrl ? (
+          <img src={qrUrl} className="w-20 h-20 block" alt="Seal" />
+        ) : (
+          <div className="w-20 h-20 bg-white flex items-center justify-center text-[8px] f-b text-black animate-pulse">FORGING...</div>
+        )}
+      </div>
+
+      <div className="overflow-hidden flex flex-col justify-between w-full">
+        <div>
+          <div className="flex justify-between items-start mb-1">
+            <p className="f-b text-[10px] font-black uppercase tracking-widest" style={{ color: teamColor }}>Beacon 0{clue.chamber_number}</p>
+            <span className="text-[8px] f-b px-2 py-0.5 rounded-sm border uppercase" style={{ borderColor: teamColor, color: teamColor }}>{teamName}</span>
+          </div>
+          <p className="f-b text-[10px] text-white opacity-40 truncate uppercase mb-1">{clue.qr_secret_key}</p>
+          <p className="f-h text-[12px] text-[#f4e4bc] normal-case leading-tight line-clamp-3 italic">"{clue.riddle_text}"</p>
+        </div>
+        <div className="flex gap-4 mt-2 no-print">
+          <button onClick={() => onEdit(clue)} className="text-[10px] f-b text-[#d4af37] underline uppercase font-bold">Edit</button>
+          <button onClick={() => onDelete(clue.id)} className="text-[10px] f-b text-red-500 underline uppercase font-bold">Del</button>
+          {qrUrl && (
+            <a href={qrUrl} download={`QR_${teamName}_B${clue.chamber_number}.png`} className="text-[10px] f-b text-green-500 underline uppercase font-bold">Save PNG</a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function RiddleForge() {
   const [clues, setClues] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [expandedTeam, setExpandedTeam] = useState(null);
   const [form, setForm] = useState({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
-  const [qrCache, setQrCache] = useState({});
-  const router = useRouter();
 
+  const router = useRouter();
   const isAdmin = useAdminStore((s) => s.isAdmin);
   const logoutAdmin = useAdminStore((s) => s.logoutAdmin);
 
   useEffect(() => {
     if (!isAdmin) { router.push('/'); return; }
     fetchData();
-  }, [isAdmin, router]);
-
-  useEffect(() => {
-    const generateQRs = async () => {
-      const newCache = {};
-      for (const clue of clues) {
-        try {
-          const url = await QRCode.toDataURL(clue.qr_secret_key, {
-            margin: 2,
-            scale: 10,
-            errorCorrectionLevel: 'H',
-            color: { dark: '#000000', light: '#ffffff' }
-          });
-          newCache[clue.id] = url;
-        } catch (err) { console.error(err); }
-      }
-      setQrCache(newCache);
-    };
-    if (clues.length > 0) generateQRs();
-  }, [clues]);
+  }, [isAdmin]);
 
   const fetchData = async () => {
     const { data: cluesData } = await supabase.from('clue_settings').select('*').order('chamber_number', { ascending: true });
-    const { data: teamsData } = await supabase.from('teams').select('id, team_name');
+    const { data: teamsData } = await supabase.from('teams').select('id, team_name').order('created_at', { ascending: true });
     setClues(cluesData || []);
     setTeams(teamsData || []);
   };
 
+  // ==========================================
+  // HIGH-CONTRAST PRESET COLORS (Scannable)
+  // ==========================================
+  const teamColorMap = useMemo(() => {
+    const boldPresets = [
+      '#0066FF', '#FF0033', '#009900', '#CC00CC', '#FF6600',
+      '#003399', '#CC0000', '#006600', '#6600CC', '#993300',
+      '#009999', '#FF0099', '#003300', '#330066', '#663300',
+      '#006666', '#990000', '#336600', '#9900CC', '#CC6600',
+      '#0000FF', '#00CC66', '#FF00FF', '#333333', '#666600'
+    ];
+    const map = {};
+    teams.forEach((team, index) => {
+      map[team.id] = boldPresets[index % boldPresets.length];
+    });
+    return map;
+  }, [teams]);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.trim().split('\n').filter(l => l.includes(','));
+        const startIdx = lines[0].toLowerCase().includes('id') ? 1 : 0;
+        const uploadRows = [];
+        for (let i = startIdx; i < lines.length; i++) {
+          const row = lines[i].split(',').map(s => s?.trim());
+          if (!row[0] || row[0].length < 10) continue;
+          const safePrefix = row[1].toUpperCase().replace(/\s/g, '_');
+          const sequence = [
+            { team_id: row[0], chamber_number: 1, qr_secret_key: `${safePrefix}_START`, riddle_text: row[2] },
+            { team_id: row[0], chamber_number: 2, qr_secret_key: `${safePrefix}_R1`, riddle_text: row[3] },
+            { team_id: row[0], chamber_number: 3, qr_secret_key: `${safePrefix}_PAUSE`, riddle_text: "⚓ CAVE TWO: PAUSE REACHED" },
+            { team_id: row[0], chamber_number: 4, qr_secret_key: `${safePrefix}_RESUME`, riddle_text: row[4] },
+            { team_id: row[0], chamber_number: 5, qr_secret_key: `${safePrefix}_R3`, riddle_text: row[5] },
+            { team_id: row[0], chamber_number: 6, qr_secret_key: `${safePrefix}_WIN`, riddle_text: "🏆 MISSION COMPLETE" }
+          ];
+          sequence.forEach(s => uploadRows.push(s));
+        }
+        await supabase.from('clue_settings').upsert(uploadRows);
+        fetchData();
+        alert("SPECTRUM FORGE SUCCESSFUL");
+      } catch (err) { alert("Upload error."); }
+    };
+    reader.readAsText(file);
+  };
+
   const handleForge = async (e) => {
     e.preventDefault();
-    const payload = {
-      team_id: form.teamId,
-      chamber_number: form.chamber,
-      qr_secret_key: form.key.trim().toUpperCase(),
-      riddle_text: form.riddle
-    };
-
-    const { error } = await supabase.from('clue_settings').upsert([
-      form.id ? { id: form.id, ...payload } : payload
-    ]);
-
-    if (!error) {
-      setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
-      fetchData();
-    } else {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('Banish this seal forever?')) return;
-    await supabase.from('clue_settings').delete().eq('id', id);
+    const payload = { team_id: form.teamId, chamber_number: form.chamber, qr_secret_key: form.key.trim().toUpperCase(), riddle_text: form.riddle };
+    await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
+    setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
     fetchData();
-  };
-
-  const handleEdit = (clue) => {
-    setForm({
-      id: clue.id,
-      teamId: clue.team_id || 'ALL',
-      chamber: clue.chamber_number,
-      key: clue.qr_secret_key,
-      riddle: clue.riddle_text
-    });
-  };
-
-  const handleLogout = () => {
-    logoutAdmin();
-    router.push('/');
   };
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-4 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
       <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Space+Mono:wght@400;700&display=swap');
-        .legend-font { font-family: 'Cinzel', serif; }
-        .data-font { font-family: 'Space Mono', monospace; }
-        .chamber-glow { text-shadow: 0 0 15px rgba(212, 175, 55, 0.6); }
-        .glass-panel { background: rgba(10, 10, 10, 0.8); border: 1px solid rgba(212, 175, 55, 0.15); backdrop-filter: blur(20px); }
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #050505; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #d4af37; border-radius: 10px; }
-        @media print {
-          .no-print { display: none !important; }
-          body { background: white !important; }
-          .glass-panel { border: 2px solid #333 !important; background: white !important; }
-          * { color: black !important; text-shadow: none !important; }
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Space+Mono:wght@400;700&display=swap');
+        .f-h { font-family: 'Cinzel', serif; } .f-b { font-family: 'Space Mono', monospace; }
+        .gold-glow { text-shadow: 0 0 20px rgba(212, 175, 55, 0.8); }
+        .glass-panel { background: rgba(5, 5, 5, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(212, 175, 55, 0.2); }
+        @keyframes scanline { 0% { bottom: 100%; } 100% { bottom: 0%; } }
+        .scanner-line { position: fixed; top: 0; left: 0; right: 0; height: 100px; background: linear-gradient(to bottom, transparent, rgba(212, 175, 55, 0.05), transparent); animation: scanline 8s linear infinite; pointer-events: none; z-index: 60; }
+        .fog-bg { position: fixed; inset: 0; background: url('/fog.png') repeat-x; opacity: 0.15; animation: floatFog 60s infinite; pointer-events: none; z-index: 1; mix-blend-mode: screen; }
+        @keyframes floatFog { 0% { transform: translateX(-5%); } 50% { transform: translateX(5%); } 100% { transform: translateX(-5%); } }
+        @media print { .no-print { display: none !important; } body { background: white !important; } }
       `}</style>
 
-      {/* BACKGROUND IMAGE */}
-      <div className="fixed inset-0 z-0 opacity-10 pointer-events-none grayscale brightness-50 no-print">
-        <img src="/cave.webp" className="w-full h-full object-cover" alt="" />
-      </div>
+      <div className="scanner-line no-print" />
+      <div className="fog-bg no-print" />
+      <div className="fixed inset-0 z-0 opacity-10 grayscale brightness-50 no-print bg-[url('/cave.webp')] bg-cover" />
 
-      {/* HEADER */}
-      <header className="relative z-10 max-w-7xl mx-auto mb-12 border-b border-[#d4af37]/20 pb-8 no-print">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
-          <div className="space-y-3">
-            <h1 className="legend-font text-5xl md:text-7xl tracking-tighter text-white leading-none">
-              SEAL <span className="text-[#d4af37] chamber-glow">FORGE</span>
-            </h1>
-            <nav className="flex flex-wrap gap-x-10 gap-y-4 pt-4">
-              <Link href="/admin/dashboard" className="data-font text-[11px] tracking-[0.4em] opacity-30 hover:opacity-100 hover:text-[#d4af37] transition-all pb-1 font-bold">EXPEDITIONS</Link>
-              <Link href="#" className="data-font text-[11px] tracking-[0.4em] text-[#d4af37] border-b-2 border-[#d4af37] pb-1 font-bold">FORGE_CLUES</Link>
-              <button onClick={handleLogout} className="data-font text-[11px] tracking-[0.4em] text-red-500/60 hover:text-red-500 transition-all font-bold">BYPASS_LOGOUT</button>
-              <button onClick={() => window.print()} className="data-font text-[11px] tracking-[0.4em] opacity-30 hover:opacity-100 hover:text-[#d4af37] transition-all font-bold">PRINT_ALL</button>
-            </nav>
-          </div>
+      <header className="relative z-10 max-w-7xl mx-auto mb-12 border-b border-[#d4af37]/20 pb-8 flex justify-between items-end no-print">
+        <div>
+          <h1 className="f-h text-5xl md:text-7xl tracking-tighter text-white uppercase leading-none">Seal <span className="text-[#d4af37] gold-glow">Forge</span></h1>
+          <nav className="flex gap-6 mt-4 f-b text-[11px] font-bold">
+            <Link href="/admin/dashboard" className="opacity-50 hover:opacity-100 uppercase">Expeditions</Link>
+            <button onClick={logoutAdmin} className="text-red-500/60 hover:text-red-500 uppercase">Logout</button>
+            <button onClick={() => window.print()} className="text-[#d4af37] underline uppercase font-black">Print Records</button>
+          </nav>
         </div>
+        <div className="f-b text-[10px] border border-[#d4af37]/30 bg-black px-4 py-2 text-[#d4af37] uppercase">{clues.length} ACTIVE SEALS</div>
       </header>
 
-      {/* MAIN CONTENT */}
       <main className="grid grid-cols-1 lg:grid-cols-12 gap-12 relative z-10 max-w-7xl mx-auto pb-32">
-        {/* FORM SECTION */}
-        <section className="lg:col-span-4 no-print">
-          <div className="glass-panel p-8 sticky top-8 rounded-sm border-t-4 border-[#d4af37] shadow-2xl">
-            <h2 className="legend-font text-xl mb-8 text-white tracking-[0.2em] border-b border-white/5 pb-4">
-              {form.id ? "▸ EDIT SCROLL ◂" : "▸ INSCRIBE CLUE ◂"}
-            </h2>
+        <section className="lg:col-span-4 no-print space-y-8">
+          <div className="glass-panel p-8 rounded-sm border-dashed border-2 border-[#d4af37]/30 bg-[#d4af37]/5">
+            <h2 className="f-h text-xl mb-4 text-[#d4af37] uppercase tracking-widest">Hard-Link Inscription</h2>
+            <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-xs f-b file:bg-[#d4af37] file:border-0 file:px-4 file:py-2 cursor-pointer font-bold" />
+          </div>
+
+          <div className="glass-panel p-8 rounded-sm">
+            <h2 className="f-h text-2xl mb-8 text-white uppercase tracking-widest font-black">{form.id ? "▸ Edit" : "▸ Forge"}</h2>
             <form onSubmit={handleForge} className="space-y-6">
-              <div className="space-y-2">
-                <label className="data-font text-[10px] text-[#d4af37] tracking-[0.3em]">TARGET_SQUAD</label>
-                <select className="w-full bg-[#0a0a0a] border border-white/10 p-4 legend-font text-[12px] text-white outline-none appearance-none cursor-pointer focus:border-[#d4af37]/50" value={form.teamId} onChange={(e) => setForm({...form, teamId: e.target.value})}>
-                  <option value="ALL">PUBLIC (ALL TEAMS)</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.team_name}</option>)}
+              <select className="w-full bg-black border border-[#d4af37]/20 p-4 f-h text-white outline-none cursor-pointer" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })}>
+                <option value="ALL">PUBLIC</option>
+                {teams.map(t => <option key={t.id} value={t.id}>{t.team_name}</option>)}
+              </select>
+              <div className="grid grid-cols-2 gap-4">
+                <select className="bg-black border border-[#d4af37]/20 p-4 f-h text-white text-center" value={form.chamber} onChange={(e) => setForm({ ...form, chamber: parseInt(e.target.value) })}>
+                  {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>B0{n}</option>)}
                 </select>
+                <input type="text" placeholder="KEY" className="bg-black border border-[#d4af37]/20 p-4 f-b text-[#d4af37] uppercase outline-none font-bold" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
               </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="data-font text-[10px] text-[#d4af37] tracking-[0.3em]">CHAMBER</label>
-                  <select className="w-full bg-[#0a0a0a] border border-white/10 p-4 legend-font text-[14px] text-white outline-none text-center" value={form.chamber} onChange={(e) => setForm({...form, chamber: parseInt(e.target.value)})}>
-                    {[1,2,3,4].map(n => <option key={n} value={n}>ROUND 0{n}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="data-font text-[10px] text-[#d4af37] tracking-[0.3em]">SEAL_KEY</label>
-                  <input type="text" required className="w-full bg-[#0a0a0a] border border-white/10 p-4 data-font text-sm text-[#d4af37] outline-none focus:border-[#d4af37]/50 uppercase" placeholder="SECRET" value={form.key} onChange={(e) => setForm({...form, key: e.target.value})} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="data-font text-[10px] text-[#d4af37] tracking-[0.3em]">THE_RIDDLE</label>
-                <textarea rows="4" required className="w-full bg-[#0a0a0a] border border-white/10 p-4 legend-font text-[14px] text-white outline-none resize-none leading-relaxed italic focus:border-[#d4af37]/50" placeholder="Type the riddle here..." value={form.riddle} onChange={(e) => setForm({...form, riddle: e.target.value})} />
-              </div>
-
-              <div className="pt-4 flex flex-col gap-3">
-                <button type="submit" className="w-full py-4 bg-[#d4af37] text-black font-black legend-font hover:brightness-110 transition-all text-[12px] tracking-[0.4em]">
-                  {form.id ? "CONFIRM ALTERATION" : "FORGE NEW SEAL"}
-                </button>
-                {form.id && (
-                    <button type="button" onClick={() => setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' })} className="data-font text-[10px] opacity-40 hover:opacity-100 py-2">
-                        [ CANCEL_STYLING ]
-                    </button>
-                )}
-              </div>
+              <textarea rows="4" className="w-full bg-black border border-[#d4af37]/20 p-4 f-h text-white italic outline-none resize-none font-bold" value={form.riddle} onChange={(e) => setForm({ ...form, riddle: e.target.value })} />
+              <button type="submit" className="w-full py-4 bg-[#d4af37] text-black font-black f-h tracking-widest active:scale-95 transition-transform shadow-xl">FORGE SEAL</button>
             </form>
           </div>
         </section>
 
-        {/* LIST SECTION */}
         <section className="lg:col-span-8 space-y-6">
-          <div className="flex justify-between items-center border-b border-white/10 pb-4 no-print">
-            <h2 className="legend-font text-2xl text-white tracking-[0.3em]">ACTIVE_ARCHIVE</h2>
-            <span className="data-font text-[10px] bg-white/5 px-3 py-1 rounded-full opacity-60">{clues.length} SEALS FORGED</span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            <AnimatePresence>
-              {clues.map((clue) => {
-                const teamName = teams.find(t => t.id === clue.team_id)?.team_name || "PUBLIC";
-                const qrImage = qrCache[clue.id];
-
-                return (
-                  <motion.div layout key={clue.id} className="glass-panel p-6 flex flex-col md:flex-row items-center gap-8 rounded-sm group hover:border-[#d4af37]/40 transition-all overflow-hidden break-inside-avoid">
-                    {/* QR Section */}
-                    <div className="shrink-0 flex flex-col items-center gap-3">
-                      <div className="bg-white p-2 rounded-sm shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                        {qrImage ? (
-                          <img src={qrImage} className="w-24 h-24" alt="Seal" />
-                        ) : (
-                          <div className="w-24 h-24 bg-black flex items-center justify-center text-[8px] animate-pulse">GENERATING...</div>
-                        )}
-                      </div>
-                      <div className="no-print">
-                        {qrImage && (
-                          <a href={qrImage} download={`SEAL_R${clue.chamber_number}_${teamName}.png`} className="data-font text-[8px] text-[#d4af37] hover:text-white transition-colors tracking-tighter border border-[#d4af37]/20 px-2 py-1">
-                            DOWNLOAD_PNG
-                          </a>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Content Section */}
-                    <div className="flex-grow space-y-4">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-6">
-                          <div className="text-center">
-                            <p className="data-font text-[8px] opacity-40 mb-1">ROUND</p>
-                            <span className="legend-font text-5xl text-white leading-none">0{clue.chamber_number}</span>
-                          </div>
-                          <div className="h-10 w-[1px] bg-white/10" />
-                          <div>
-                            <p className="data-font text-[8px] opacity-40 mb-1">DESTINATION</p>
-                            <span className={`data-font text-[10px] font-bold tracking-widest px-3 py-1 border ${clue.team_id === 'ALL' ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'text-[#d4af37] border-[#d4af37]/20'}`}>
-                              {teamName}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-right no-print">
-                          <p className="data-font text-[8px] opacity-30 tracking-widest font-bold">PASSKEY</p>
-                          <p className="data-font text-xs text-[#d4af37] font-bold tracking-widest">{clue.qr_secret_key}</p>
-                        </div>
-                      </div>
-
-                      <div className="relative p-4 bg-white/5 rounded-sm">
-                        <p className="legend-font text-[15px] italic text-white/90 normal-case leading-relaxed">"{clue.riddle_text}"</p>
-                      </div>
-
-                      <div className="flex gap-8 pt-2 no-print">
-                        <button onClick={() => handleEdit(clue)} className="data-font text-[10px] text-[#d4af37] hover:text-white tracking-[0.2em] font-bold flex items-center gap-2">
-                          <span className="text-[14px]">✎</span> MODIFY_SCROLL
-                        </button>
-                        <button onClick={() => handleDelete(clue.id)} className="data-font text-[10px] text-red-500/40 hover:text-red-500 tracking-[0.2em] font-bold flex items-center gap-2 transition-all">
-                          <span className="text-[14px]">x</span> BANISH_SEAL
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
+          <h2 className="f-h text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black">Active_Archive</h2>
+          <div className="space-y-4">
+            {teams.map(team => {
+              const teamClues = clues.filter(c => String(c.team_id) === String(team.id));
+              const color = teamColorMap[team.id] || '#ffffff';
+              return (
+                <div key={team.id} className="glass-panel rounded-sm overflow-hidden shadow-2xl">
+                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-6 flex justify-between items-center transition-all border-l-[6px]" style={{ borderLeftColor: color }}>
+                    <span className="f-h text-3xl text-white uppercase tracking-tighter" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
+                    <span className="text-[#d4af37] text-2xl font-black">{expandedTeam === team.id ? "−" : "+"}</span>
+                  </button>
+                  <AnimatePresence>
+                    {expandedTeam === team.id && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-6 bg-black/40 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-white/5">
+                        {teamClues.map(clue => (
+                          <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         </section>
       </main>
-
-      {/* VIGNETTE */}
-      <div className="pointer-events-none fixed inset-0 z-40 shadow-[inset_0_0_200px_rgba(0,0,0,1)] opacity-70 no-print" />
+      <div className="pointer-events-none fixed inset-0 z-40 shadow-[inset_0_0_300px_rgba(0,0,0,1)] opacity-70 no-print" />
     </div>
   );
 }
