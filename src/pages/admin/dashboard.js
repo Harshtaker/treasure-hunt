@@ -107,7 +107,7 @@ export default function AdminDashboard() {
   if (!hydrated) return null;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-4 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
+    <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-2 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Space+Mono:wght@400;700&display=swap');
         .f-h { font-family: 'Cinzel', serif; }
@@ -121,6 +121,17 @@ export default function AdminDashboard() {
         .scanner-line { position: fixed; top: 0; left: 0; right: 0; height: 100px; background: linear-gradient(to bottom, transparent, rgba(212, 175, 55, 0.05), transparent); animation: scanline 8s linear infinite; pointer-events: none; z-index: 60; }
         .particles { position: fixed; width: 3px; height: 3px; background: rgba(212,175,55,0.6); box-shadow: 0 0 10px rgba(212,175,55,0.8); border-radius: 50%; opacity: 0; animation: rise 15s infinite ease-in; z-index: 2; pointer-events: none; }
         @keyframes rise { 0% { bottom: -10px; transform: translateX(0); opacity: 0; } 50% { opacity: 1; } 100% { bottom: 100vh; transform: translateX(50px); opacity: 0; } }
+
+        /* Admin Mobile Specifics */
+        @media (max-width: 768px) {
+            .admin-header-title { font-size: 3rem !important; }
+            .stats-grid { gap: 10px !important; padding: 15px !important; }
+            .stats-val { font-size: 2rem !important; }
+            .team-card { padding: 20px 15px !important; gap: 20px !important; }
+            .badge-small { width: 60px !important; height: 60px !important; }
+            .badge-text { font-size: 1.5rem !important; }
+            .info-grid { grid-template-columns: 1fr !important; gap: 15px !important; }
+        }
       `}</style>
 
       <div className="scanner-line" />
@@ -132,44 +143,44 @@ export default function AdminDashboard() {
         <img src="/cave.webp" className="w-full h-full object-cover" alt="" />
       </div>
 
-      <header className="relative z-10 max-w-7xl mx-auto mb-16 border-b border-[#d4af37]/20 pb-10">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-8">
-          <div className="space-y-4">
+      <header className="relative z-10 max-w-7xl mx-auto mb-8 md:mb-16 border-b border-[#d4af37]/20 pb-6 md:pb-10">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 md:gap-8">
+          <div className="space-y-4 w-full">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 bg-red-600 animate-pulse rounded-full shadow-[0_0_12px_red]" />
               <p className="f-b text-[10px] tracking-[0.2em] text-red-500 font-bold uppercase">System Live • Sync: {lastSync}</p>
             </div>
-            <h1 className="f-h text-6xl md:text-8xl tracking-tighter text-white leading-none"> COMMAND <span className="text-[#d4af37] gold-glow">CENTER</span> </h1>
-            <nav className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-4">
-              <Link href="#" className="f-b text-[11px] tracking-[0.2em] text-[#d4af37] border-b-2 border-[#d4af37] pb-1 font-bold">LIVE FLEET</Link>
-              <Link href="/admin/clues" className="f-b text-[11px] tracking-[0.2em] opacity-50 hover:opacity-100 hover:text-[#d4af37] transition-all pb-1 font-bold">MANAGE CLUES</Link>
-              <button onClick={handleUnpauseTeams} className="glass-btn px-4 py-2 f-b text-[10px] font-black border-cyan-500/50 text-cyan-400 ml-2"> UNPAUSE CAVE TEAMS </button>
-              <button onClick={handleLogout} className="glass-btn px-4 py-2 f-b text-[10px] font-black border-red-500/50 text-red-500"> LOGOUT </button>
+            <h1 className="f-h text-5xl md:text-8xl tracking-tighter text-white leading-none admin-header-title"> COMMAND <span className="text-[#d4af37] gold-glow">CENTER</span> </h1>
+            <nav className="flex flex-wrap items-center gap-x-4 gap-y-3 pt-2">
+              <Link href="#" className="f-b text-[10px] md:text-[11px] tracking-[0.2em] text-[#d4af37] border-b-2 border-[#d4af37] pb-1 font-bold">LIVE FLEET</Link>
+              <Link href="/admin/clues" className="f-b text-[10px] md:text-[11px] tracking-[0.2em] opacity-50 hover:opacity-100 hover:text-[#d4af37] transition-all pb-1 font-bold">MANAGE CLUES</Link>
+              <button onClick={handleUnpauseTeams} className="glass-btn px-3 py-2 f-b text-[9px] md:text-[10px] font-black border-cyan-500/50 text-cyan-400"> UNPAUSE TEAMS </button>
+              <button onClick={handleLogout} className="glass-btn px-3 py-2 f-b text-[9px] md:text-[10px] font-black border-red-500/50 text-red-500"> LOGOUT </button>
             </nav>
           </div>
 
-          <div className="flex flex-wrap gap-6 p-6 glass-panel rounded-sm shrink-0">
-            <div className="text-center px-4">
-              <p className="f-b text-[10px] opacity-60 tracking-widest mb-2 uppercase">Teams</p>
-              <p className="f-h text-5xl text-white">{teams.length}</p>
+          <div className="flex flex-row w-full lg:w-auto gap-3 md:gap-6 p-4 md:p-6 glass-panel rounded-sm shrink-0 stats-grid">
+            <div className="text-center flex-1">
+              <p className="f-b text-[8px] md:text-[10px] opacity-60 tracking-widest mb-1 uppercase">Teams</p>
+              <p className="f-h text-3xl md:text-5xl text-white stats-val">{teams.length}</p>
             </div>
-            <div className="text-center px-4 border-x border-white/10">
-              <p className="f-b text-[10px] opacity-60 tracking-widest mb-2 text-green-500 uppercase">Hunting</p>
-              <p className="f-h text-5xl text-green-500">{teams.filter(t => t.current_sector > 0 && t.status === 'ACTIVE').length}</p>
+            <div className="text-center flex-1 border-x border-white/10">
+              <p className="f-b text-[8px] md:text-[10px] opacity-60 tracking-widest mb-1 text-green-500 uppercase">Hunting</p>
+              <p className="f-h text-3xl md:text-5xl text-green-500 stats-val">{teams.filter(t => t.current_sector > 0 && t.status === 'ACTIVE').length}</p>
             </div>
-            <div className="text-center px-4">
-              <p className="f-b text-[10px] opacity-60 tracking-widest mb-2 text-red-500 uppercase">Planked</p>
-              <p className="f-h text-5xl text-red-600">{teams.filter(t => t.status === 'ELIMINATED').length}</p>
+            <div className="text-center flex-1">
+              <p className="f-b text-[8px] md:text-[10px] opacity-60 tracking-widest mb-1 text-red-500 uppercase">Planked</p>
+              <p className="f-h text-3xl md:text-5xl text-red-600 stats-val">{teams.filter(t => t.status === 'ELIMINATED').length}</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="grid grid-cols-1 gap-6 relative z-10 max-w-7xl mx-auto pb-32">
+      <main className="grid grid-cols-1 gap-4 md:gap-6 relative z-10 max-w-7xl mx-auto pb-32">
         <AnimatePresence mode='popLayout'>
           {teams.map((team, index) => (
             <motion.div layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} key={team.id}
-              className={`glass-panel px-8 py-10 flex flex-col lg:flex-row items-center justify-between gap-10 rounded-sm relative overflow-hidden ${team.status === 'ELIMINATED' ? 'opacity-40 grayscale' : 'hover:border-[#d4af37]/50'}`}
+              className={`glass-panel px-4 md:px-8 py-6 md:py-10 flex flex-col lg:flex-row items-center justify-between gap-6 md:gap-10 rounded-sm relative overflow-hidden team-card ${team.status === 'ELIMINATED' ? 'opacity-40 grayscale' : 'hover:border-[#d4af37]/50'}`}
             >
               {/* Sector Progress Bar */}
               <div className="absolute bottom-0 left-0 h-1 bg-[#d4af37]/5 w-full" />
@@ -177,35 +188,34 @@ export default function AdminDashboard() {
                 className={`absolute bottom-0 left-0 h-1 shadow-[0_0_15px] ${team.current_sector === 0 ? 'bg-cyan-500 shadow-cyan-500' : 'bg-[#d4af37] shadow-[#d4af37]'}`}
               />
 
-              <div className="flex flex-col md:flex-row items-center gap-12 w-full lg:w-3/4">
+              <div className="flex flex-col md:flex-row items-center gap-6 md:gap-12 w-full lg:w-3/4">
                 <div className="relative shrink-0">
-                  <div className={`w-24 h-24 border-2 flex flex-col items-center justify-center rounded-full bg-black/40 ${team.status === 'ELIMINATED' ? 'border-red-900/50' : team.current_sector === 0 ? 'border-cyan-500/40' : 'border-[#d4af37]/40'}`}>
-                    <span className={`f-h text-4xl leading-none ${team.status === 'ELIMINATED' ? 'text-red-900' : team.current_sector === 0 ? 'text-cyan-400 cyan-glow' : 'text-white gold-glow'}`}>
+                  <div className={`w-16 h-16 md:w-24 md:h-24 border-2 flex flex-col items-center justify-center rounded-full bg-black/40 badge-small ${team.status === 'ELIMINATED' ? 'border-red-900/50' : team.current_sector === 0 ? 'border-cyan-500/40' : 'border-[#d4af37]/40'}`}>
+                    <span className={`f-h text-2xl md:text-4xl leading-none badge-text ${team.status === 'ELIMINATED' ? 'text-red-900' : team.current_sector === 0 ? 'text-cyan-400 cyan-glow' : 'text-white gold-glow'}`}>
                       {getRoundDisplay(team.current_sector)}
                     </span>
-                    <p className="f-b text-[10px] opacity-70 mt-1 tracking-widest">{team.current_sector === 0 ? "READY" : "BEACON"}</p>
+                    <p className="f-b text-[8px] md:text-[10px] opacity-70 mt-1 tracking-widest">{team.current_sector === 0 ? "READY" : "BEACON"}</p>
                   </div>
                 </div>
 
-                <div className="text-center md:text-left space-y-3">
-                  <div className="flex flex-col md:flex-row items-center gap-4">
-                    <div className="bg-black/50 border border-[#d4af37]/40 text-[#d4af37] px-4 py-1 rounded-sm f-h text-2xl">#{index + 1}</div>
-                    <h3 className="f-h text-4xl md:text-5xl text-white tracking-tight">{team.team_name}</h3>
+                <div className="text-center md:text-left space-y-3 w-full">
+                  <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4">
+                    <div className="bg-black/50 border border-[#d4af37]/40 text-[#d4af37] px-3 py-1 rounded-sm f-h text-lg md:text-2xl">#{index + 1}</div>
+                    <h3 className="f-h text-2xl md:text-5xl text-white tracking-tight break-all">{team.team_name}</h3>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-12 gap-y-6 mt-4 border-t border-[#d4af37]/20 pt-6">
-                    <div className="f-b text-[11px] flex flex-col">
-                      <span className="opacity-50 tracking-wider text-[#d4af37] uppercase mb-1">Leader</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-x-12 mt-4 border-t border-[#d4af37]/20 pt-4 md:pt-6 info-grid">
+                    <div className="f-b text-[10px] md:text-[11px] flex flex-row md:flex-col justify-between md:justify-start border-b md:border-none border-white/5 pb-2 md:pb-0">
+                      <span className="opacity-50 tracking-wider text-[#d4af37] uppercase mb-1">Leader:</span>
                       <span className="text-[#f4e4bc] font-bold text-sm">{team.leader_name}</span>
                     </div>
-                    <div className="f-b text-[11px] flex flex-col">
-                      <span className="opacity-50 tracking-wider text-[#d4af37] uppercase mb-1">Position</span>
+                    <div className="f-b text-[10px] md:text-[11px] flex flex-row md:flex-col justify-between md:justify-start border-b md:border-none border-white/5 pb-2 md:pb-0">
+                      <span className="opacity-50 tracking-wider text-[#d4af37] uppercase mb-1">Position:</span>
                       <span className="text-[#f4e4bc] font-bold text-sm">Beacon 0{team.current_sector} / 06</span>
                     </div>
-                    <div className="flex flex-col bg-black/60 p-3 rounded-sm border border-[#d4af37]/20 relative min-w-[120px]">
-                      <span className="f-b text-[10px] opacity-70 text-[#d4af37] uppercase">HUNTING TIME</span>
-                      <span className="text-white font-black text-lg mt-1 tracking-widest tabular-nums">
-                        {/* FIX: Time logic synchronized with Sector 1 scan */}
+                    <div className="flex flex-col bg-black/60 p-2 md:p-3 rounded-sm border border-[#d4af37]/20 relative min-w-[120px]">
+                      <span className="f-b text-[9px] md:text-[10px] opacity-70 text-[#d4af37] uppercase">HUNTING TIME</span>
+                      <span className="text-white font-black text-base md:text-lg mt-1 tracking-widest tabular-nums">
                         {team.current_sector === 0 ? "0m 00s" : formatTime(team.total_time_taken)}
                       </span>
                     </div>
@@ -213,8 +223,8 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="w-full lg:w-auto text-center lg:text-right flex flex-col items-center lg:items-end gap-4">
-                <div className={`inline-block min-w-[200px] px-8 py-4 border text-[14px] font-black tracking-[0.2em] shadow-2xl backdrop-blur-md uppercase f-h ${team.status === 'ELIMINATED' ? 'border-red-900 text-red-600 bg-red-950/40' :
+              <div className="w-full lg:w-auto text-center lg:text-right flex flex-col items-center lg:items-end gap-3 md:gap-4">
+                <div className={`w-full lg:min-w-[200px] px-6 md:px-8 py-3 md:py-4 border text-[12px] md:text-[14px] font-black tracking-[0.2em] shadow-2xl backdrop-blur-md uppercase f-h ${team.status === 'ELIMINATED' ? 'border-red-900 text-red-600 bg-red-950/40' :
                     team.status === 'FINISHED' ? 'border-green-700 text-green-500 bg-green-950/40' :
                       team.current_sector === 0 ? 'border-cyan-600 text-cyan-400 bg-cyan-950/40 animate-pulse' :
                         team.current_phase === 'COVE' ? 'border-cyan-700 text-cyan-400 bg-cyan-950/40' :
@@ -224,9 +234,9 @@ export default function AdminDashboard() {
                 </div>
 
                 {team.status === 'ACTIVE' && (
-                  <button onClick={() => handlePlankTeam(team.id)} className="f-b text-[9px] font-bold uppercase tracking-widest text-red-400/80 hover:text-white hover:bg-red-800 px-3 py-1 border border-red-500/50 transition-all rounded-sm"> Walk the Plank </button>
+                  <button onClick={() => handlePlankTeam(team.id)} className="w-full lg:w-auto f-b text-[9px] font-bold uppercase tracking-widest text-red-400/80 hover:text-white hover:bg-red-800 px-3 py-2 border border-red-500/50 transition-all rounded-sm"> Walk the Plank </button>
                 )}
-                <p className="f-b text-[10px] opacity-40 mt-1 lowercase">ID: {team.id.toString().substring(0, 8)}</p>
+                <p className="f-b text-[8px] md:text-[10px] opacity-40 mt-1 lowercase">ID: {team.id.toString().substring(0, 8)}</p>
               </div>
             </motion.div>
           ))}
