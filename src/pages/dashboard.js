@@ -359,7 +359,7 @@ export default function Dashboard() {
 
   // MAIN ACTIVE DASHBOARD
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-[#050505]">
+    <div className="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 relative overflow-hidden bg-[#050505]">
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Space+Mono:wght@400;700&display=swap');
         .f-h { font-family: 'Cinzel', serif; } .f-b { font-family: 'Space Mono', monospace; }
@@ -368,6 +368,14 @@ export default function Dashboard() {
         .glass-panel { background: rgba(5, 5, 5, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(212, 175, 55, 0.2); box-shadow: 0 25px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5); }
         .glass-btn { background: rgba(5, 5, 5, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.1em; }
         .rope-line { position: absolute; top: 50%; left: 10%; right: 10%; height: 2px; background: rgba(212, 175, 55, 0.2); z-index: 0; transform: translateY(-50%); }
+        
+        /* Mobile Specific Overrides */
+        @media (max-width: 640px) {
+          .mobile-stack-fix { flex-direction: row !important; gap: 8px !important; }
+          .bubble-small { width: 40px !important; height: 40px !important; font-size: 16px !important; }
+          .main-card-padding { padding: 20px 15px !important; }
+          .inscription-box { min-h: 120px !important; padding: 20px !important; }
+        }
       `}</style>
 
       {/* AMBIENT EFFECTS */}
@@ -376,53 +384,55 @@ export default function Dashboard() {
       <div className="absolute inset-0 z-0 bg-[url('/fog.png')] bg-cover opacity-20 animate-pulse pointer-events-none mix-blend-screen" />
 
       {/* TOP UTIL BAR */}
-      <header className="absolute top-6 w-full flex justify-between items-start pt-2 z-20 max-w-[95%] md:max-w-lg px-2">
-        <button onClick={handleLogout} className="glass-btn px-4 py-3 f-b text-[10px] font-bold rounded-sm border border-[#d4af37]/30 text-[#d4af37] bg-black/50"> [✖] Abandon </button>
-        <button onClick={fetchLeaderboard} className="glass-btn px-4 py-3 f-b text-[10px] font-bold rounded-sm flex items-center gap-2 border border-[#d4af37]/30 text-[#d4af37] bg-black/50"> Leaderboard <span className="text-[#d4af37] animate-pulse">●</span> </button>
+      <header className="absolute top-4 w-full flex justify-between items-start pt-2 z-20 max-w-[95%] md:max-w-lg px-2">
+        <button onClick={handleLogout} className="glass-btn px-3 py-2 f-b text-[10px] font-bold rounded-sm border border-[#d4af37]/30 text-[#d4af37] bg-black/50"> [✖] Abandon </button>
+        <button onClick={fetchLeaderboard} className="glass-btn px-3 py-2 f-b text-[10px] font-bold rounded-sm flex items-center gap-2 border border-[#d4af37]/30 text-[#d4af37] bg-black/50"> Leaderboard <span className="text-[#d4af37] animate-pulse">●</span> </button>
       </header>
 
       {/* MAIN CONTAINER */}
-      <main className="w-full max-w-[92%] md:max-w-md mt-16 relative z-10 flex flex-col items-center p-8 sm:p-10 glass-panel rounded-lg min-h-[500px]">
+      <main className="w-full max-w-[95%] md:max-w-md mt-16 relative z-10 flex flex-col items-center main-card-padding glass-panel rounded-lg min-h-[500px]">
         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
-        <h2 className="f-h text-2xl md:text-3xl text-white mt-2 uppercase gold-glow tracking-widest text-center font-bold"> Team: {team.team_name} </h2>
+        <h2 className="f-h text-xl md:text-3xl text-white mt-2 uppercase gold-glow tracking-widest text-center font-bold"> Team: {team.team_name} </h2>
 
-        <div className="w-full flex-col sm:flex-row flex gap-6 my-8 px-4 justify-center items-center">
+        {/* PROGRESS TRACKER - SIDE BY SIDE ON MOBILE */}
+        <div className="w-full flex flex-row gap-2 sm:gap-6 my-6 px-1 justify-center items-center mobile-stack-fix">
           {/* Phase I Progress */}
-          <div className="glass-panel p-4 rounded-sm relative w-full sm:w-[220px] flex flex-col items-center">
-            <span className="text-[#d4af37] text-[10px] f-b mb-4 font-bold opacity-80 uppercase tracking-widest text-center">Phase I: Descent</span>
+          <div className="glass-panel p-2 sm:p-4 rounded-sm relative flex-1 flex flex-col items-center">
+            <span className="text-[#d4af37] text-[8px] sm:text-[10px] f-b mb-3 font-bold opacity-80 uppercase tracking-widest text-center">Phase I</span>
             <div className="rope-line" />
-            <div className="flex justify-between w-full px-6 relative z-10 gap-4">
+            <div className="flex justify-between w-full px-2 sm:px-6 relative z-10 gap-2">
               {[1, 2].map((n) => (
-                <div key={n} className={`w-10 h-10 rounded-full flex items-center justify-center f-h text-xl shadow-xl transition-all duration-700 ${team.current_sector >= n ? 'bg-[#d4af37] text-black border-2 border-white font-black' : 'bg-black/80 text-white/40 border border-white/20'}`}>{n}</div>
+                <div key={n} className={`w-8 h-8 sm:w-10 sm:h-10 bubble-small rounded-full flex items-center justify-center f-h text-sm sm:text-xl shadow-xl transition-all duration-700 ${team.current_sector >= n ? 'bg-[#d4af37] text-black border-2 border-white font-black' : 'bg-black/80 text-white/40 border border-white/20'}`}>{n}</div>
               ))}
             </div>
           </div>
 
           {/* Phase II Progress */}
-          <div className="glass-panel p-4 rounded-sm relative w-full sm:w-[220px] flex flex-col items-center">
-            <span className="text-[#d4af37] text-[10px] f-b mb-4 font-bold opacity-80 uppercase tracking-widest text-center">Phase II: Final Path</span>
+          <div className="glass-panel p-2 sm:p-4 rounded-sm relative flex-1 flex flex-col items-center">
+            <span className="text-[#d4af37] text-[8px] sm:text-[10px] f-b mb-3 font-bold opacity-80 uppercase tracking-widest text-center">Phase II</span>
             <div className="rope-line" />
-            <div className="flex justify-between w-full px-6 relative z-10 gap-4">
+            <div className="flex justify-between w-full px-2 sm:px-6 relative z-10 gap-2">
               {[4, 6].map((n, i) => (
-                <div key={n} className={`w-10 h-10 rounded-full flex items-center justify-center f-h text-xl shadow-xl transition-all duration-700 ${team.current_sector >= n ? 'bg-[#d4af37] text-black border-2 border-white font-black' : 'bg-black/80 text-white/40 border border-white/20'}`}>{n === 6 ? '🏆' : '3'}</div>
+                <div key={n} className={`w-8 h-8 sm:w-10 sm:h-10 bubble-small rounded-full flex items-center justify-center f-h text-sm sm:text-xl shadow-xl transition-all duration-700 ${team.current_sector >= n ? 'bg-[#d4af37] text-black border-2 border-white font-black' : 'bg-black/80 text-white/40 border border-white/20'}`}>{n === 6 ? '🏆' : '3'}</div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="flex w-full items-stretch gap-4 mb-8 flex-col sm:flex-row mt-4">
-          <div className="flex-1 glass-panel p-8 flex flex-col items-center justify-center text-center min-h-[220px] rounded-sm relative overflow-hidden">
+        <div className="flex w-full items-stretch gap-3 mb-6 flex-col sm:flex-row">
+          {/* CLUE DISPLAY */}
+          <div className="flex-1 glass-panel p-5 sm:p-8 inscription-box flex flex-col items-center justify-center text-center rounded-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent" />
-            <span className="text-[#d4af37] text-xs f-b mb-4 font-bold opacity-70 tracking-widest uppercase">Decrypted Inscription</span>
+            <span className="text-[#d4af37] text-[10px] f-b mb-3 font-bold opacity-70 tracking-widest uppercase">Decrypted Inscription</span>
             <AnimatePresence mode="wait">
               {(revealedClue && currentPhase === 'SAILING') ? (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} key={team.current_sector}>
-                  <p className="f-h text-xl sm:text-2xl text-white leading-relaxed font-bold uppercase drop-shadow-xl font-bold">"{revealedClue}"</p>
+                  <p className="f-h text-lg sm:text-2xl text-white leading-relaxed font-bold uppercase drop-shadow-xl">"{revealedClue}"</p>
                 </motion.div>
               ) : (
                 <div className="opacity-60 text-white flex flex-col items-center">
-                  <div className="w-12 h-12 border border-dashed border-[#d4af37]/50 rounded-full mb-3 flex items-center justify-center animate-pulse text-[#d4af37] f-b font-black text-xl">?</div>
-                  <p className="f-b text-[10px] uppercase font-bold text-[#d4af37] text-center px-4">
+                  <div className="w-8 h-8 sm:w-12 sm:h-12 border border-dashed border-[#d4af37]/50 rounded-full mb-2 flex items-center justify-center animate-pulse text-[#d4af37] f-b font-black">?</div>
+                  <p className="f-b text-[9px] uppercase font-bold text-[#d4af37] text-center px-1">
                     {team.current_sector === 0 ? "Scan START Beacon (QR-1)" :
                       currentPhase === 'RELEASED' ? "Scan Resume Seal (QR-4)" :
                         `Locate QR-${team.current_sector + 1}`}
@@ -432,13 +442,14 @@ export default function Dashboard() {
             </AnimatePresence>
           </div>
 
-          <div className="sm:w-[130px] w-full shrink-0 flex flex-col items-center justify-center relative glass-panel rounded-sm py-4">
-            <span className="text-[#d4af37] text-[9px] f-b opacity-70 absolute top-4 uppercase tracking-[0.2em]">Time Bank</span>
-            <span className={`text-4xl f-h font-black tabular-nums ${timeLeft < 300 && currentPhase === 'SAILING' ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(timeLeft)}</span>
+          {/* TIME BANK */}
+          <div className="sm:w-[130px] w-full shrink-0 flex flex-col items-center justify-center relative glass-panel rounded-sm py-3 sm:py-4">
+            <span className="text-[#d4af37] text-[8px] sm:text-[9px] f-b opacity-70 absolute top-2 sm:top-4 uppercase tracking-[0.2em]">Time Bank</span>
+            <span className={`text-3xl sm:text-4xl f-h font-black tabular-nums mt-3 sm:mt-0 ${timeLeft < 300 && currentPhase === 'SAILING' ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(timeLeft)}</span>
           </div>
         </div>
 
-        <button onClick={handleInitiateScan} className="w-full mt-auto py-5 bg-gradient-to-b from-[#003d33] to-[#00251a] text-[#ffd54f] border-2 border-[#d4af37] shadow-xl hover:brightness-125 f-h text-lg font-black uppercase rounded-sm active:scale-95 transition-all group overflow-hidden relative">
+        <button onClick={handleInitiateScan} className="w-full mt-auto py-4 sm:py-5 bg-gradient-to-b from-[#003d33] to-[#00251a] text-[#ffd54f] border-2 border-[#d4af37] shadow-xl hover:brightness-125 f-h text-lg font-black uppercase rounded-sm active:scale-95 transition-all group overflow-hidden relative">
           <span className="relative z-10 flex items-center justify-center gap-3">Scan Ancient Seal <span className="text-2xl">⨁</span></span>
           <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
         </button>
@@ -457,33 +468,32 @@ export default function Dashboard() {
 
       {/* SCANNER OVERLAY */}
       <AnimatePresence>{isScanning && (
-        <div className="fixed inset-0 z-[100] bg-black/98 flex flex-col items-center justify-center p-8 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[100] bg-black/98 flex flex-col items-center justify-center p-4 sm:p-8 backdrop-blur-xl">
           <div className="w-full max-w-sm aspect-square relative rounded-sm border-2 border-[#d4af37]/30 bg-black overflow-hidden shadow-2xl">
             <div id="reader" className="w-full h-full scale-110"></div>
-            {msg.text && <div className={`absolute inset-0 flex items-center justify-center z-[110] backdrop-blur-md ${msg.type === 'error' ? 'bg-red-600/80' : 'bg-[#d4af37]/90'}`}><p className="f-h text-3xl text-white text-center uppercase px-6 font-bold">{msg.text}</p></div>}
+            {msg.text && <div className={`absolute inset-0 flex items-center justify-center z-[110] backdrop-blur-md ${msg.type === 'error' ? 'bg-red-600/80' : 'bg-[#d4af37]/90'}`}><p className="f-h text-2xl sm:text-3xl text-white text-center uppercase px-6 font-bold">{msg.text}</p></div>}
           </div>
-          <button onClick={() => setIsScanning(false)} className="mt-12 text-white/40 f-b uppercase text-sm border-b border-white/10 pb-1">Cancel Scan</button>
+          <button onClick={() => setIsScanning(false)} className="mt-8 sm:mt-12 text-white/40 f-b uppercase text-sm border-b border-white/10 pb-1">Cancel Scan</button>
         </div>
       )}</AnimatePresence>
 
       {/* LEADERBOARD OVERLAY */}
       <AnimatePresence>{showLeaderboard && (
-        <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center p-6 backdrop-blur-xl overflow-y-auto">
-          <div className="w-full max-w-md py-10 flex flex-col items-center">
-            <h2 className="f-h text-3xl text-[#d4af37] mb-8 text-center uppercase tracking-widest font-black">Rankings</h2>
-            <div className="w-full flex flex-col gap-4 pb-20">
+        <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center p-4 sm:p-6 backdrop-blur-xl overflow-y-auto">
+          <div className="w-full max-w-md py-6 sm:py-10 flex flex-col items-center">
+            <h2 className="f-h text-2xl sm:text-3xl text-[#d4af37] mb-6 sm:mb-8 text-center uppercase tracking-widest font-black">Rankings</h2>
+            <div className="w-full flex flex-col gap-3 sm:gap-4 pb-20">
               {leaderboardData.map((t, idx) => {
-                // If sector is 0, show 0:00 to solve the "registration time" bug
                 const displayTime = t.current_sector === 0 ? "0:00" : formatTime(t.total_time_taken || 0);
                 return (
-                  <div key={idx} className={`w-full glass-panel flex items-center justify-between p-4 ${t.team_name === team.team_name ? 'border-[#d4af37]/80 bg-[#d4af37]/10' : 'border-white/5'}`}>
-                    <div className="flex items-center gap-4 text-white"><span>{idx + 1}</span><span className="uppercase f-h font-bold">{t.team_name}</span></div>
-                    <span className="f-h text-white font-bold">{displayTime}</span>
+                  <div key={idx} className={`w-full glass-panel flex items-center justify-between p-3 sm:p-4 ${t.team_name === team.team_name ? 'border-[#d4af37]/80 bg-[#d4af37]/10' : 'border-white/5'}`}>
+                    <div className="flex items-center gap-3 sm:gap-4 text-white"><span>{idx + 1}</span><span className="uppercase f-h font-bold text-sm sm:text-base truncate max-w-[120px]">{t.team_name}</span></div>
+                    <span className="f-h text-white font-bold text-sm sm:text-base">{displayTime}</span>
                   </div>
                 );
               })}
             </div>
-            <button onClick={() => setShowLeaderboard(false)} className="fixed bottom-10 px-10 py-3 glass-btn f-b text-xs uppercase font-black rounded-sm bg-black/80">Exit</button>
+            <button onClick={() => setShowLeaderboard(false)} className="fixed bottom-6 px-10 py-3 glass-btn f-b text-xs uppercase font-black rounded-sm bg-black/80">Exit</button>
           </div>
         </div>
       )}</AnimatePresence>
