@@ -38,11 +38,11 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
   }, [clue.qr_secret_key, teamColor, clue.chamber_number]);
 
   return (
-    <div className="flex gap-4 p-4 border border-white/10 bg-black rounded-sm shadow-xl relative overflow-hidden">
+    <div className="flex flex-col sm:flex-row gap-4 p-4 border border-white/10 bg-black rounded-sm shadow-xl relative overflow-hidden">
       {/* Visual indicator on the card side */}
       <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: teamColor }} />
 
-      <div className="shrink-0 bg-white p-2 border-2 rounded-sm" style={{ borderColor: teamColor, minWidth: '104px', minHeight: '104px' }}>
+      <div className="shrink-0 bg-white p-2 border-2 rounded-sm mx-auto sm:mx-0" style={{ borderColor: teamColor, minWidth: '104px', minHeight: '104px' }}>
         {qrUrl ? (
           <img src={qrUrl} className="w-20 h-20 block" alt="Seal" />
         ) : (
@@ -50,16 +50,16 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
         )}
       </div>
 
-      <div className="overflow-hidden flex flex-col justify-between w-full">
+      <div className="overflow-hidden flex flex-col justify-between w-full text-center sm:text-left">
         <div>
-          <div className="flex justify-between items-start mb-1">
+          <div className="flex flex-col sm:flex-row justify-between items-center sm:items-start mb-2 sm:mb-1 gap-2 sm:gap-0">
             <p className="f-b text-[10px] font-black uppercase tracking-widest" style={{ color: teamColor }}>Beacon 0{clue.chamber_number}</p>
             <span className="text-[8px] f-b px-2 py-0.5 rounded-sm border uppercase" style={{ borderColor: teamColor, color: teamColor }}>{teamName}</span>
           </div>
           <p className="f-b text-[10px] text-white opacity-40 truncate uppercase mb-1">{clue.qr_secret_key}</p>
           <p className="f-h text-[12px] text-[#f4e4bc] normal-case leading-tight line-clamp-3 italic">"{clue.riddle_text}"</p>
         </div>
-        <div className="flex gap-4 mt-2 no-print">
+        <div className="flex justify-center sm:justify-start gap-4 mt-3 sm:mt-2 no-print">
           <button onClick={() => onEdit(clue)} className="text-[10px] f-b text-[#d4af37] underline uppercase font-bold">Edit</button>
           <button onClick={() => onDelete(clue.id)} className="text-[10px] f-b text-red-500 underline uppercase font-bold">Del</button>
           {qrUrl && (
@@ -93,9 +93,6 @@ export default function RiddleForge() {
     setTeams(teamsData || []);
   };
 
-  // ==========================================
-  // HIGH-CONTRAST PRESET COLORS (Scannable)
-  // ==========================================
   const teamColorMap = useMemo(() => {
     const boldPresets = [
       '#0066FF', '#FF0033', '#009900', '#CC00CC', '#FF6600',
@@ -152,7 +149,7 @@ export default function RiddleForge() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-4 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
+    <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-2 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Space+Mono:wght@400;700&display=swap');
         .f-h { font-family: 'Cinzel', serif; } .f-b { font-family: 'Space Mono', monospace; }
@@ -163,16 +160,20 @@ export default function RiddleForge() {
         .fog-bg { position: fixed; inset: 0; background: url('/fog.png') repeat-x; opacity: 0.15; animation: floatFog 60s infinite; pointer-events: none; z-index: 1; mix-blend-mode: screen; }
         @keyframes floatFog { 0% { transform: translateX(-5%); } 50% { transform: translateX(5%); } 100% { transform: translateX(-5%); } }
         @media print { .no-print { display: none !important; } body { background: white !important; } }
+        @media (max-width: 768px) {
+          .mobile-header-stack { flex-direction: column !important; align-items: center !important; text-align: center !important; }
+          .forge-grid-fix { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       <div className="scanner-line no-print" />
       <div className="fog-bg no-print" />
       <div className="fixed inset-0 z-0 opacity-10 grayscale brightness-50 no-print bg-[url('/cave.webp')] bg-cover" />
 
-      <header className="relative z-10 max-w-7xl mx-auto mb-12 border-b border-[#d4af37]/20 pb-8 flex justify-between items-end no-print">
+      <header className="relative z-10 max-w-7xl mx-auto mb-8 md:mb-12 border-b border-[#d4af37]/20 pb-6 md:pb-8 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 no-print mobile-header-stack">
         <div>
-          <h1 className="f-h text-5xl md:text-7xl tracking-tighter text-white uppercase leading-none">Seal <span className="text-[#d4af37] gold-glow">Forge</span></h1>
-          <nav className="flex gap-6 mt-4 f-b text-[11px] font-bold">
+          <h1 className="f-h text-4xl md:text-7xl tracking-tighter text-white uppercase leading-none">Seal <span className="text-[#d4af37] gold-glow">Forge</span></h1>
+          <nav className="flex justify-center md:justify-start gap-4 md:gap-6 mt-4 f-b text-[10px] md:text-[11px] font-bold">
             <Link href="/admin/dashboard" className="opacity-50 hover:opacity-100 uppercase">Expeditions</Link>
             <button onClick={logoutAdmin} className="text-red-500/60 hover:text-red-500 uppercase">Logout</button>
             <button onClick={() => window.print()} className="text-[#d4af37] underline uppercase font-black">Print Records</button>
@@ -181,50 +182,51 @@ export default function RiddleForge() {
         <div className="f-b text-[10px] border border-[#d4af37]/30 bg-black px-4 py-2 text-[#d4af37] uppercase">{clues.length} ACTIVE SEALS</div>
       </header>
 
-      <main className="grid grid-cols-1 lg:grid-cols-12 gap-12 relative z-10 max-w-7xl mx-auto pb-32">
-        <section className="lg:col-span-4 no-print space-y-8">
-          <div className="glass-panel p-8 rounded-sm border-dashed border-2 border-[#d4af37]/30 bg-[#d4af37]/5">
+      <main className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-12 relative z-10 max-w-7xl mx-auto pb-32">
+        <section className="lg:col-span-4 no-print space-y-6 md:space-y-8">
+          <div className="glass-panel p-6 md:p-8 rounded-sm border-dashed border-2 border-[#d4af37]/30 bg-[#d4af37]/5">
             <h2 className="f-h text-xl mb-4 text-[#d4af37] uppercase tracking-widest">Hard-Link Inscription</h2>
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-xs f-b file:bg-[#d4af37] file:border-0 file:px-4 file:py-2 cursor-pointer font-bold" />
+            <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-[10px] md:text-xs f-b file:bg-[#d4af37] file:border-0 file:px-3 file:py-2 cursor-pointer font-bold" />
           </div>
 
-          <div className="glass-panel p-8 rounded-sm">
-            <h2 className="f-h text-2xl mb-8 text-white uppercase tracking-widest font-black">{form.id ? "▸ Edit" : "▸ Forge"}</h2>
-            <form onSubmit={handleForge} className="space-y-6">
-              <select className="w-full bg-black border border-[#d4af37]/20 p-4 f-h text-white outline-none cursor-pointer" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })}>
+          <div className="glass-panel p-6 md:p-8 rounded-sm">
+            <h2 className="f-h text-xl md:text-2xl mb-6 md:mb-8 text-white uppercase tracking-widest font-black">{form.id ? "▸ Edit" : "▸ Forge"}</h2>
+            <form onSubmit={handleForge} className="space-y-4 md:space-y-6">
+              <select className="w-full bg-black border border-[#d4af37]/20 p-3 md:p-4 f-h text-sm md:text-base text-white outline-none cursor-pointer" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })}>
                 <option value="ALL">PUBLIC</option>
                 {teams.map(t => <option key={t.id} value={t.id}>{t.team_name}</option>)}
               </select>
-              <div className="grid grid-cols-2 gap-4">
-                <select className="bg-black border border-[#d4af37]/20 p-4 f-h text-white text-center" value={form.chamber} onChange={(e) => setForm({ ...form, chamber: parseInt(e.target.value) })}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <select className="bg-black border border-[#d4af37]/20 p-3 md:p-4 f-h text-white text-center" value={form.chamber} onChange={(e) => setForm({ ...form, chamber: parseInt(e.target.value) })}>
                   {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>B0{n}</option>)}
                 </select>
-                <input type="text" placeholder="KEY" className="bg-black border border-[#d4af37]/20 p-4 f-b text-[#d4af37] uppercase outline-none font-bold" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
+                <input type="text" placeholder="KEY" className="bg-black border border-[#d4af37]/20 p-3 md:p-4 f-b text-[#d4af37] uppercase outline-none font-bold text-sm" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
               </div>
-              <textarea rows="4" className="w-full bg-black border border-[#d4af37]/20 p-4 f-h text-white italic outline-none resize-none font-bold" value={form.riddle} onChange={(e) => setForm({ ...form, riddle: e.target.value })} />
-              <button type="submit" className="w-full py-4 bg-[#d4af37] text-black font-black f-h tracking-widest active:scale-95 transition-transform shadow-xl">FORGE SEAL</button>
+              <textarea rows="4" placeholder="RIDDLE TEXT" className="w-full bg-black border border-[#d4af37]/20 p-3 md:p-4 f-h text-white italic outline-none resize-none font-bold text-sm" value={form.riddle} onChange={(e) => setForm({ ...form, riddle: e.target.value })} />
+              <button type="submit" className="w-full py-4 bg-[#d4af37] text-black font-black f-h tracking-widest active:scale-95 transition-transform shadow-xl uppercase">FORGE SEAL</button>
             </form>
           </div>
         </section>
 
         <section className="lg:col-span-8 space-y-6">
-          <h2 className="f-h text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black">Active_Archive</h2>
+          <h2 className="f-h text-2xl md:text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black text-center md:text-left">Active_Archive</h2>
           <div className="space-y-4">
             {teams.map(team => {
               const teamClues = clues.filter(c => String(c.team_id) === String(team.id));
               const color = teamColorMap[team.id] || '#ffffff';
               return (
                 <div key={team.id} className="glass-panel rounded-sm overflow-hidden shadow-2xl">
-                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-6 flex justify-between items-center transition-all border-l-[6px]" style={{ borderLeftColor: color }}>
-                    <span className="f-h text-3xl text-white uppercase tracking-tighter" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
-                    <span className="text-[#d4af37] text-2xl font-black">{expandedTeam === team.id ? "−" : "+"}</span>
+                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-4 md:p-6 flex justify-between items-center transition-all border-l-[4px] md:border-l-[6px]" style={{ borderLeftColor: color }}>
+                    <span className="f-h text-xl md:text-3xl text-white uppercase tracking-tighter truncate pr-4" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
+                    <span className="text-[#d4af37] text-xl md:text-2xl font-black">{expandedTeam === team.id ? "−" : "+"}</span>
                   </button>
                   <AnimatePresence>
                     {expandedTeam === team.id && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-6 bg-black/40 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-white/5">
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/40 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-white/5">
                         {teamClues.map(clue => (
                           <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                         ))}
+                        {teamClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4">No seals forged for this crew.</p>}
                       </motion.div>
                     )}
                   </AnimatePresence>
