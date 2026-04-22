@@ -157,17 +157,29 @@ export default function Dashboard() {
     try {
       const { data: dbTeam } = await supabase.from('teams').select('current_sector').eq('id', currentTeam.id).single();
       const actualSector = dbTeam ? dbTeam.current_sector : currentTeam.current_sector;
-
-      // STRICT FLOW: Target is NEXT Beacon (1 through 6)
       const targetBeacon = actualSector + 1;
 
-      const { data: clueData } = await supabase
+      // 1. First Check: Is it a Team-Specific QR?
+      let { data: clueData } = await supabase
         .from('clue_settings')
         .select('*')
         .eq('team_id', currentTeam.id)
         .eq('chamber_number', targetBeacon)
         .eq('qr_secret_key', code)
         .maybeSingle();
+
+      // 2. Fallback Check: Is it a PUBLIC QR for the target beacon? (Specially for Final QR-6)
+      if (!clueData) {
+        const { data: publicClue } = await supabase
+          .from('clue_settings')
+          .select('*')
+          .in('team_id', ['ALL', null]) // Look for public keys
+          .eq('chamber_number', targetBeacon)
+          .eq('qr_secret_key', code)
+          .maybeSingle();
+
+        if (publicClue) clueData = publicClue;
+      }
 
       if (!clueData) {
         setMsg({ type: 'error', text: 'INVALID SEAL' });
