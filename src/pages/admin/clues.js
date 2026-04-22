@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useAdminStore } from '../../lib/store';
 
 // ==========================================
-// COLORED QR COMPONENT (Optimized for Scanning)
+// COLORED QR COMPONENT
 // ==========================================
 const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
   const [qrUrl, setQrUrl] = useState('');
@@ -40,7 +40,6 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
   return (
     <div className="flex flex-col sm:flex-row gap-4 p-4 border border-white/10 bg-black rounded-sm shadow-xl relative overflow-hidden">
       <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: teamColor }} />
-
       <div className="shrink-0 bg-white p-2 border-2 rounded-sm mx-auto sm:mx-0" style={{ borderColor: teamColor, minWidth: '104px', minHeight: '104px' }}>
         {qrUrl ? (
           <img src={qrUrl} className="w-20 h-20 block" alt="Seal" />
@@ -48,7 +47,6 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
           <div className="w-20 h-20 bg-white flex items-center justify-center text-[8px] f-b text-black animate-pulse">FORGING...</div>
         )}
       </div>
-
       <div className="overflow-hidden flex flex-col justify-between w-full text-center sm:text-left">
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-center sm:items-start mb-2 sm:mb-1 gap-2 sm:gap-0">
@@ -93,13 +91,7 @@ export default function RiddleForge() {
   };
 
   const teamColorMap = useMemo(() => {
-    const boldPresets = [
-      '#0066FF', '#FF0033', '#009900', '#CC00CC', '#FF6600',
-      '#003399', '#CC0000', '#006600', '#6600CC', '#993300',
-      '#009999', '#FF0099', '#003300', '#330066', '#663300',
-      '#006666', '#990000', '#336600', '#9900CC', '#CC6600',
-      '#0000FF', '#00CC66', '#FF00FF', '#333333', '#666600'
-    ];
+    const boldPresets = ['#0066FF', '#FF0033', '#009900', '#CC00CC', '#FF6600', '#003399', '#CC0000'];
     const map = { 'ALL': '#d4af37' };
     teams.forEach((team, index) => {
       map[team.id] = boldPresets[index % boldPresets.length];
@@ -107,7 +99,9 @@ export default function RiddleForge() {
     return map;
   }, [teams]);
 
-  // FIXED FILE UPLOAD LOGIC
+  // ==========================================
+  // UPDATED FILE UPLOAD (Robust Parsing)
+  // ==========================================
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -115,40 +109,47 @@ export default function RiddleForge() {
     reader.onload = async (event) => {
       try {
         const text = event.target.result;
-        const lines = text.trim().split('\n').filter(l => l.includes(','));
-        const startIdx = lines[0].toLowerCase().includes('id') ? 1 : 0;
+        const rows = text.split(/\r?\n/).filter(line => line.trim() !== '');
+
+        // Skip header if present
+        const hasHeader = rows[0].toLowerCase().includes('id') || rows[0].toLowerCase().includes('team');
+        const dataRows = hasHeader ? rows.slice(1) : rows;
+
         const uploadRows = [];
 
-        for (let i = startIdx; i < lines.length; i++) {
-          const row = lines[i].split(',').map(s => s?.trim());
-          if (!row[0] || row[0].length < 10) continue;
+        for (const line of dataRows) {
+          const cols = line.split(',').map(c => c.trim());
+          if (cols.length < 2) continue; // Minimum: ID and TeamName
 
-          const teamId = row[0];
-          const teamName = row[1];
+          const teamId = cols[0];
+          const teamName = cols[1];
           const safePrefix = teamName.toUpperCase().replace(/\s/g, '_');
 
-          // Generate personal sequence for Chamber 1 to 5
-          // Chamber 6 is excluded here because it is PUBLIC/UNIVERSAL
+          // Generate sequence for Chambers 1-5
           const sequence = [
-            { team_id: teamId, chamber_number: 1, qr_secret_key: `${safePrefix}_START`, riddle_text: row[2] || "START THE HUNT" },
-            { team_id: teamId, chamber_number: 2, qr_secret_key: `${safePrefix}_R1`, riddle_text: row[3] || "FIRST RIDDLE" },
-            { team_id: teamId, chamber_number: 3, qr_secret_key: `${safePrefix}_PAUSE`, riddle_text: "⚓ CAVE TWO: MILESTONE REACHED" },
-            { team_id: teamId, chamber_number: 4, qr_secret_key: `${safePrefix}_RESUME`, riddle_text: row[4] || "RESUME HUNT" },
-            { team_id: teamId, chamber_number: 5, qr_secret_key: `${safePrefix}_R3`, riddle_text: row[5] || "FINAL RIDDLE" }
+            { team_id: teamId, chamber_number: 1, qr_secret_key: `${safePrefix}_START`, riddle_text: cols[2] || "START" },
+            { team_id: teamId, chamber_number: 2, qr_secret_key: `${safePrefix}_R1`, riddle_text: cols[3] || "LEVEL 1" },
+            { team_id: teamId, chamber_number: 3, qr_secret_key: `${safePrefix}_PAUSE`, riddle_text: "⚓ CAVE TWO: PAUSE" },
+            { team_id: teamId, chamber_number: 4, qr_secret_key: `${safePrefix}_RESUME`, riddle_text: cols[4] || "LEVEL 2" },
+            { team_id: teamId, chamber_number: 5, qr_secret_key: `${safePrefix}_R3`, riddle_text: cols[5] || "LEVEL 3" }
           ];
 
-          sequence.forEach(s => uploadRows.push(s));
+          uploadRows.push(...sequence);
         }
 
         if (uploadRows.length > 0) {
-          const { error } = await supabase.from('clue_settings').upsert(uploadRows, { onConflict: 'team_id,chamber_number' });
+          // DIRECT UPSERT (Fix: removing complex onConflict to ensure simple overwriting)
+          const { error } = await supabase.from('clue_settings').upsert(uploadRows);
           if (error) throw error;
+
           fetchData();
-          alert("CSV INSCRIPTION SUCCESSFUL - CHAMBERS 1-5 GENERATED");
+          alert("SEALS FORGED SUCCESSFULLY!");
+        } else {
+          alert("CSV is empty or invalid format.");
         }
       } catch (err) {
-        console.error(err);
-        alert("Upload error: " + err.message);
+        console.error("Upload Error:", err);
+        alert("CRITICAL ERROR: Check console for logs.");
       }
     };
     reader.readAsText(file);
@@ -157,11 +158,9 @@ export default function RiddleForge() {
   const handleForge = async (e) => {
     e.preventDefault();
     const payload = { team_id: form.teamId === 'ALL' ? null : form.teamId, chamber_number: form.chamber, qr_secret_key: form.key.trim().toUpperCase(), riddle_text: form.riddle };
-    const { error } = await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
-    if (!error) {
-      setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
-      fetchData();
-    }
+    await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
+    setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
+    fetchData();
   };
 
   const publicClues = clues.filter(c => c.team_id === 'ALL' || c.team_id === null);
@@ -173,21 +172,15 @@ export default function RiddleForge() {
         .f-h { font-family: 'Cinzel', serif; } .f-b { font-family: 'Space Mono', monospace; }
         .gold-glow { text-shadow: 0 0 20px rgba(212, 175, 55, 0.8); }
         .glass-panel { background: rgba(5, 5, 5, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(212, 175, 55, 0.2); }
-        @keyframes scanline { 0% { bottom: 100%; } 100% { bottom: 0%; } }
         .scanner-line { position: fixed; top: 0; left: 0; right: 0; height: 100px; background: linear-gradient(to bottom, transparent, rgba(212, 175, 55, 0.05), transparent); animation: scanline 8s linear infinite; pointer-events: none; z-index: 60; }
-        .fog-bg { position: fixed; inset: 0; background: url('/fog.png') repeat-x; opacity: 0.15; animation: floatFog 60s infinite; pointer-events: none; z-index: 1; mix-blend-mode: screen; }
-        @keyframes floatFog { 0% { transform: translateX(-5%); } 50% { transform: translateX(5%); } 100% { transform: translateX(-5%); } }
+        @keyframes scanline { 0% { bottom: 100%; } 100% { bottom: 0%; } }
         @media print { .no-print { display: none !important; } body { background: white !important; } }
-        @media (max-width: 768px) {
-          .mobile-header-stack { flex-direction: column !important; align-items: center !important; text-align: center !important; }
-        }
       `}</style>
 
       <div className="scanner-line no-print" />
-      <div className="fog-bg no-print" />
       <div className="fixed inset-0 z-0 opacity-10 grayscale brightness-50 no-print bg-[url('/cave.webp')] bg-cover" />
 
-      <header className="relative z-10 max-w-7xl mx-auto mb-8 md:mb-12 border-b border-[#d4af37]/20 pb-6 md:pb-8 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 no-print mobile-header-stack">
+      <header className="relative z-10 max-w-7xl mx-auto mb-8 md:mb-12 border-b border-[#d4af37]/20 pb-6 md:pb-8 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 no-print">
         <div>
           <h1 className="f-h text-4xl md:text-7xl tracking-tighter text-white uppercase leading-none">Seal <span className="text-[#d4af37] gold-glow">Forge</span></h1>
           <nav className="flex justify-center md:justify-start gap-4 md:gap-6 mt-4 f-b text-[10px] md:text-[11px] font-bold">
@@ -229,8 +222,8 @@ export default function RiddleForge() {
           <h2 className="f-h text-2xl md:text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black text-center md:text-left">Active_Archive</h2>
 
           <div className="space-y-4">
-            {/* PUBLIC SEALS SECTION */}
-            <div className="glass-panel rounded-sm overflow-hidden shadow-2xl border-2 border-[#d4af37]/30">
+            {/* PUBLIC SEALS */}
+            <div className="glass-panel rounded-sm overflow-hidden shadow-2xl border-2 border-[#d4af37]/40">
               <button onClick={() => setExpandedTeam(expandedTeam === 'PUBLIC' ? null : 'PUBLIC')} className="w-full p-4 md:p-6 flex justify-between items-center transition-all bg-[#d4af37]/10">
                 <span className="f-h text-xl md:text-3xl text-[#d4af37] uppercase tracking-tighter">PUBLIC SEALS (UNIVERSAL)</span>
                 <span className="text-[#d4af37] text-xl md:text-2xl font-black">{expandedTeam === 'PUBLIC' ? "−" : "+"}</span>
@@ -241,7 +234,7 @@ export default function RiddleForge() {
                     {publicClues.map(clue => (
                       <QRCard key={clue.id} clue={clue} teamColor="#d4af37" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                     ))}
-                    {publicClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No public seals forged yet.</p>}
+                    {publicClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4">No public seals forged.</p>}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -253,17 +246,17 @@ export default function RiddleForge() {
               const color = teamColorMap[team.id] || '#ffffff';
               return (
                 <div key={team.id} className="glass-panel rounded-sm overflow-hidden shadow-2xl">
-                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-4 md:p-6 flex justify-between items-center transition-all border-l-[4px] md:border-l-[6px]" style={{ borderLeftColor: color }}>
-                    <span className="f-h text-xl md:text-3xl text-white uppercase tracking-tighter truncate pr-4" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
+                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-4 md:p-6 flex justify-between items-center transition-all border-l-[6px]" style={{ borderLeftColor: color }}>
+                    <span className="f-h text-xl md:text-3xl text-white uppercase tracking-tighter pr-4 truncate" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
                     <span className="text-[#d4af37] text-xl md:text-2xl font-black">{expandedTeam === team.id ? "−" : "+"}</span>
                   </button>
                   <AnimatePresence>
                     {expandedTeam === team.id && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/40 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-white/5">
                         {teamClues.map(clue => (
-                          <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle_text: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                          <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                         ))}
-                        {teamClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No seals forged for this crew.</p>}
+                        {teamClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4">No seals forged for this team.</p>}
                       </motion.div>
                     )}
                   </AnimatePresence>
