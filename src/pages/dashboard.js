@@ -159,7 +159,7 @@ export default function Dashboard() {
       const actualSector = dbTeam ? dbTeam.current_sector : currentTeam.current_sector;
       const targetBeacon = actualSector + 1;
 
-      // 1. First Check: Is it a Team-Specific QR?
+      // --- STEP A: Check Team-Specific QR ---
       let { data: clueData } = await supabase
         .from('clue_settings')
         .select('*')
@@ -168,12 +168,13 @@ export default function Dashboard() {
         .eq('qr_secret_key', code)
         .maybeSingle();
 
-      // 2. Fallback Check: Is it a PUBLIC QR for the target beacon? (Specially for Final QR-6)
+      // --- STEP B: UNIVERSAL PUBLIC FALLBACK (CRITICAL FIX) ---
+      // Agar manual public QR hai toh database mein team_id ya toh NULL hota hai ya 'ALL'
       if (!clueData) {
         const { data: publicClue } = await supabase
           .from('clue_settings')
           .select('*')
-          .in('team_id', ['ALL', null]) // Look for public keys
+          .or(`team_id.is.null,team_id.eq.ALL`) // Robust check for NULL or 'ALL'
           .eq('chamber_number', targetBeacon)
           .eq('qr_secret_key', code)
           .maybeSingle();
@@ -193,10 +194,8 @@ export default function Dashboard() {
         return;
       }
 
-      // Advance State (QR-1 starts clock, QR-3 pauses/cove, QR-6 wins)
+      // Success Logic
       await advanceRound(targetBeacon, clueData);
-
-      // Update local clue immediately for the UI
       setRevealedClue(clueData.riddle_text);
 
       let successMsg = 'DECRYPTED';
@@ -415,9 +414,8 @@ export default function Dashboard() {
         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
         <h2 className="f-h text-xl md:text-3xl text-white mt-2 uppercase gold-glow tracking-widest text-center font-bold"> Team: {team.team_name} </h2>
 
-        {/* PROGRESS TRACKER - SIDE BY SIDE ON MOBILE */}
+        {/* PROGRESS TRACKER */}
         <div className="w-full flex flex-row gap-2 sm:gap-6 my-6 px-1 justify-center items-center mobile-stack-fix">
-          {/* Phase I Progress */}
           <div className="glass-panel p-2 sm:p-4 rounded-sm relative flex-1 flex flex-col items-center">
             <span className="text-[#d4af37] text-[8px] sm:text-[10px] f-b mb-3 font-bold opacity-80 uppercase tracking-widest text-center">Phase I</span>
             <div className="rope-line" />
@@ -427,8 +425,6 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-
-          {/* Phase II Progress */}
           <div className="glass-panel p-2 sm:p-4 rounded-sm relative flex-1 flex flex-col items-center">
             <span className="text-[#d4af37] text-[8px] sm:text-[10px] f-b mb-3 font-bold opacity-80 uppercase tracking-widest text-center">Phase II</span>
             <div className="rope-line" />
@@ -441,7 +437,6 @@ export default function Dashboard() {
         </div>
 
         <div className="flex w-full items-stretch gap-3 mb-6 flex-col sm:flex-row">
-          {/* CLUE DISPLAY */}
           <div className="flex-1 glass-panel p-5 sm:p-8 inscription-box flex flex-col items-center justify-center text-center rounded-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent" />
             <span className="text-[#d4af37] text-[10px] f-b mb-3 font-bold opacity-70 tracking-widest uppercase">Decrypted Inscription</span>
@@ -464,8 +459,6 @@ export default function Dashboard() {
               )}
             </AnimatePresence>
           </div>
-
-          {/* TIME BANK */}
           <div className="sm:w-[130px] w-full shrink-0 flex flex-col items-center justify-center relative glass-panel rounded-sm py-3 sm:py-4">
             <span className="text-[#d4af37] text-[8px] sm:text-[9px] f-b opacity-70 absolute top-2 sm:top-4 uppercase tracking-[0.2em]">Time Bank</span>
             <span className={`text-3xl sm:text-4xl f-h font-black tabular-nums mt-3 sm:mt-0 ${timeLeft < 300 && currentPhase === 'SAILING' ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(timeLeft)}</span>
@@ -478,18 +471,17 @@ export default function Dashboard() {
         </button>
       </main>
 
-      {/* ERROR OVERLAY */}
+      {/* OVERLAYS */}
       <AnimatePresence>{cameraError && (
         <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-md text-center">
           <div className="border border-red-500/30 bg-red-950/20 p-10 max-w-sm shadow-2xl">
             <h2 className="f-h text-2xl text-red-500 mb-6 uppercase font-bold">{cameraError}</h2>
-            <p className="f-b text-[#f4e4bc] text-sm mb-8 opacity-90 uppercase leading-relaxed">Permission Denied. Re-enable Camera in Browser Settings.</p>
+            <p className="f-b text-[#f4e4bc] text-sm mb-8 opacity-90 uppercase leading-relaxed">Permission Denied.</p>
             <button onClick={() => setCameraError(null)} className="w-full py-4 bg-[#d4af37] text-black uppercase f-b text-xs font-black tracking-widest">Acknowledge</button>
           </div>
         </div>
       )}</AnimatePresence>
 
-      {/* SCANNER OVERLAY */}
       <AnimatePresence>{isScanning && (
         <div className="fixed inset-0 z-[100] bg-black/98 flex flex-col items-center justify-center p-4 sm:p-8 backdrop-blur-xl">
           <div className="w-full max-w-sm aspect-square relative rounded-sm border-2 border-[#d4af37]/30 bg-black overflow-hidden shadow-2xl">
@@ -500,7 +492,6 @@ export default function Dashboard() {
         </div>
       )}</AnimatePresence>
 
-      {/* LEADERBOARD OVERLAY */}
       <AnimatePresence>{showLeaderboard && (
         <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center p-4 sm:p-6 backdrop-blur-xl overflow-y-auto">
           <div className="w-full max-w-md py-6 sm:py-10 flex flex-col items-center">
