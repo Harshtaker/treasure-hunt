@@ -122,7 +122,7 @@ export default function RiddleForge() {
       const nextChar = text[i + 1];
 
       if (char === '"' && inQuotes && nextChar === '"') {
-        cell += '"'; i++; // Handle escaped quotes ""
+        cell += '"'; i++;
       } else if (char === '"') {
         inQuotes = !inQuotes;
       } else if (char === ',' && !inQuotes) {
@@ -184,14 +184,31 @@ export default function RiddleForge() {
     reader.readAsText(file, "UTF-8");
   };
 
+  // --- MANUAL FORGE FIX: ENSURE SYNC WITH DASHBOARD QUERY ---
   const handleForge = async (e) => {
     e.preventDefault();
-    const payload = { team_id: form.teamId === 'ALL' ? null : form.teamId, chamber_number: form.chamber, qr_secret_key: form.key.trim().toUpperCase(), riddle_text: form.riddle };
-    await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
-    setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
-    fetchData();
+
+    // Dashboard logic looks for NULL or 'ALL'. We force 'ALL' into null for DB consistency.
+    const finalTeamId = form.teamId === 'ALL' ? null : form.teamId;
+
+    const payload = {
+      team_id: finalTeamId,
+      chamber_number: form.chamber,
+      qr_secret_key: form.key.trim().toUpperCase(),
+      riddle_text: form.riddle
+    };
+
+    const { error } = await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
+
+    if (error) {
+      alert("Forge failed: " + error.message);
+    } else {
+      setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
+      fetchData();
+    }
   };
 
+  // UI Filter: Display clues with no team_id as Public
   const publicClues = clues.filter(c => c.team_id === 'ALL' || c.team_id === null);
 
   return (
@@ -258,8 +275,8 @@ export default function RiddleForge() {
           <h2 className="f-h text-2xl md:text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black text-center md:text-left">Active_Archive</h2>
 
           <div className="space-y-4">
-            {/* PUBLIC SEALS */}
-            <div className="glass-panel rounded-sm overflow-hidden shadow-2xl border-2 border-[#d4af37]/40 bg-[#d4af37]/5">
+            {/* PUBLIC SEALS SECTION */}
+            <div className="glass-panel rounded-sm overflow-hidden shadow-2xl border-2 border-[#d4af37]/30">
               <button onClick={() => setExpandedTeam(expandedTeam === 'PUBLIC' ? null : 'PUBLIC')} className="w-full p-4 md:p-6 flex justify-between items-center transition-all bg-[#d4af37]/10">
                 <span className="f-h text-xl md:text-3xl text-[#d4af37] uppercase tracking-tighter">PUBLIC SEALS (UNIVERSAL)</span>
                 <span className="text-[#d4af37] text-xl md:text-2xl font-black">{expandedTeam === 'PUBLIC' ? "−" : "+"}</span>
@@ -268,7 +285,7 @@ export default function RiddleForge() {
                 {expandedTeam === 'PUBLIC' && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/60 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-[#d4af37]/20">
                     {publicClues.map(clue => (
-                      <QRCard key={clue.id} clue={clue} teamColor="#4e162eff" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                      <QRCard key={clue.id} clue={clue} teamColor="#d4af37" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                     ))}
                     {publicClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No public seals forged yet.</p>}
                   </motion.div>
@@ -276,14 +293,14 @@ export default function RiddleForge() {
               </AnimatePresence>
             </div>
 
-            {/* TEAM SEALS */}
+            {/* TEAM SPECIFIC SEALS */}
             {teams.map(team => {
               const teamClues = clues.filter(c => String(c.team_id) === String(team.id));
               const color = teamColorMap[team.id] || '#ffffff';
               return (
                 <div key={team.id} className="glass-panel rounded-sm overflow-hidden shadow-2xl">
-                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-4 md:p-6 flex justify-between items-center transition-all border-l-[6px]" style={{ borderLeftColor: color }}>
-                    <span className="f-h text-xl md:text-3xl text-white uppercase tracking-tighter pr-4 truncate" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
+                  <button onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)} className="w-full p-4 md:p-6 flex justify-between items-center transition-all border-l-[4px] md:border-l-[6px]" style={{ borderLeftColor: color }}>
+                    <span className="f-h text-xl md:text-3xl text-white uppercase tracking-tighter truncate pr-4" style={{ color: expandedTeam === team.id ? color : 'white' }}>{team.team_name}</span>
                     <span className="text-[#d4af37] text-xl md:text-2xl font-black">{expandedTeam === team.id ? "−" : "+"}</span>
                   </button>
                   <AnimatePresence>
@@ -292,6 +309,7 @@ export default function RiddleForge() {
                         {teamClues.map(clue => (
                           <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                         ))}
+                        {teamClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No seals forged for this crew.</p>}
                       </motion.div>
                     )}
                   </AnimatePresence>
