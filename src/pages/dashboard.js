@@ -381,12 +381,21 @@ export default function Dashboard() {
         .glass-btn { background: rgba(5, 5, 5, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.1em; }
         .rope-line { position: absolute; top: 50%; left: 10%; right: 10%; height: 2px; background: rgba(212, 175, 55, 0.2); z-index: 0; transform: translateY(-50%); }
         
+        .clue-text-pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+          font-family: 'Space Mono', monospace !important;
+          text-align: left !important;
+          display: block;
+          width: 100%;
+        }
+
         /* Mobile Specific Overrides */
         @media (max-width: 640px) {
           .mobile-stack-fix { flex-direction: row !important; gap: 8px !important; }
           .bubble-small { width: 40px !important; height: 40px !important; font-size: 16px !important; }
           .main-card-padding { padding: 20px 15px !important; }
-          .inscription-box { min-h: 120px !important; padding: 20px !important; }
+          .inscription-box { min-height: 120px !important; padding: 20px !important; }
         }
       `}</style>
 
@@ -438,8 +447,10 @@ export default function Dashboard() {
             <span className="text-[#d4af37] text-[10px] f-b mb-3 font-bold opacity-70 tracking-widest uppercase">Decrypted Inscription</span>
             <AnimatePresence mode="wait">
               {(revealedClue && currentPhase === 'SAILING') ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} key={team.current_sector}>
-                  <p className="f-h text-lg sm:text-2xl text-white leading-relaxed font-bold uppercase drop-shadow-xl">"{revealedClue}"</p>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} key={team.current_sector} className="w-full">
+                  <div className="clue-text-pre text-xs sm:text-sm text-white leading-relaxed font-bold uppercase drop-shadow-xl">
+                    {revealedClue}
+                  </div>
                 </motion.div>
               ) : (
                 <div className="opacity-60 text-white flex flex-col items-center">
