@@ -74,7 +74,7 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
 export default function RiddleForge() {
   const [clues, setClues] = useState([]);
   const [teams, setTeams] = useState([]);
-  const [expandedTeam, setExpandedTeam] = useState(null);
+  const [expandedTeam, setExpandedTeam] = useState('PUBLIC'); // Default expand public section
   const [form, setForm] = useState({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
 
   const router = useRouter();
@@ -101,7 +101,7 @@ export default function RiddleForge() {
       '#006666', '#990000', '#336600', '#9900CC', '#CC6600',
       '#0000FF', '#00CC66', '#FF00FF', '#333333', '#666600'
     ];
-    const map = {};
+    const map = { 'ALL': '#d4af37' }; // Gold for Public
     teams.forEach((team, index) => {
       map[team.id] = boldPresets[index % boldPresets.length];
     });
@@ -148,6 +148,8 @@ export default function RiddleForge() {
     fetchData();
   };
 
+  const publicClues = clues.filter(c => c.team_id === 'ALL' || c.team_id === null);
+
   return (
     <div className="min-h-screen bg-[#050505] text-[#f4e4bc] p-2 md:p-12 relative font-sans uppercase overflow-y-auto custom-scroll selection:bg-[#d4af37] selection:text-black">
       <style jsx global>{`
@@ -162,7 +164,6 @@ export default function RiddleForge() {
         @media print { .no-print { display: none !important; } body { background: white !important; } }
         @media (max-width: 768px) {
           .mobile-header-stack { flex-direction: column !important; align-items: center !important; text-align: center !important; }
-          .forge-grid-fix { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -193,7 +194,7 @@ export default function RiddleForge() {
             <h2 className="f-h text-xl md:text-2xl mb-6 md:mb-8 text-white uppercase tracking-widest font-black">{form.id ? "▸ Edit" : "▸ Forge"}</h2>
             <form onSubmit={handleForge} className="space-y-4 md:space-y-6">
               <select className="w-full bg-black border border-[#d4af37]/20 p-3 md:p-4 f-h text-sm md:text-base text-white outline-none cursor-pointer" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })}>
-                <option value="ALL">PUBLIC</option>
+                <option value="ALL">PUBLIC (UNIVERSAL)</option>
                 {teams.map(t => <option key={t.id} value={t.id}>{t.team_name}</option>)}
               </select>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -210,7 +211,27 @@ export default function RiddleForge() {
 
         <section className="lg:col-span-8 space-y-6">
           <h2 className="f-h text-2xl md:text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black text-center md:text-left">Active_Archive</h2>
+
           <div className="space-y-4">
+            {/* PUBLIC SEALS SECTION (NEW) */}
+            <div className="glass-panel rounded-sm overflow-hidden shadow-2xl border-2 border-[#d4af37]/30">
+              <button onClick={() => setExpandedTeam(expandedTeam === 'PUBLIC' ? null : 'PUBLIC')} className="w-full p-4 md:p-6 flex justify-between items-center transition-all bg-[#d4af37]/10">
+                <span className="f-h text-xl md:text-3xl text-[#d4af37] uppercase tracking-tighter">PUBLIC SEALS (UNIVERSAL)</span>
+                <span className="text-[#d4af37] text-xl md:text-2xl font-black">{expandedTeam === 'PUBLIC' ? "−" : "+"}</span>
+              </button>
+              <AnimatePresence>
+                {expandedTeam === 'PUBLIC' && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/60 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-[#d4af37]/20">
+                    {publicClues.map(clue => (
+                      <QRCard key={clue.id} clue={clue} teamColor="#d4af37" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                    ))}
+                    {publicClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No public seals forged yet.</p>}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* TEAM SPECIFIC SEALS */}
             {teams.map(team => {
               const teamClues = clues.filter(c => String(c.team_id) === String(team.id));
               const color = teamColorMap[team.id] || '#ffffff';
@@ -224,9 +245,9 @@ export default function RiddleForge() {
                     {expandedTeam === team.id && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/40 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-white/5">
                         {teamClues.map(clue => (
-                          <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                          <QRCard key={clue.id} clue={clue} teamColor={color} teamName={team.team_name} onEdit={(clue) => { setForm({ id: clue.id, teamId: clue.team_id, chamber: clue.chamber_number, key: clue.qr_secret_key, riddle_text: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                         ))}
-                        {teamClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4">No seals forged for this crew.</p>}
+                        {teamClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No seals forged for this crew.</p>}
                       </motion.div>
                     )}
                   </AnimatePresence>
