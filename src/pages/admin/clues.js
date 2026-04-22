@@ -22,8 +22,8 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
           scale: 8,
           errorCorrectionLevel: 'H',
           color: {
-            dark: teamColor, // QR dots are now specifically the team's color
-            light: '#ffffff' // White background is kept for scanner contrast
+            dark: teamColor,
+            light: '#ffffff'
           }
         }).then(url => {
           if (isMounted) setQrUrl(url);
@@ -39,7 +39,6 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
 
   return (
     <div className="flex flex-col sm:flex-row gap-4 p-4 border border-white/10 bg-black rounded-sm shadow-xl relative overflow-hidden">
-      {/* Visual indicator on the card side */}
       <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: teamColor }} />
 
       <div className="shrink-0 bg-white p-2 border-2 rounded-sm mx-auto sm:mx-0" style={{ borderColor: teamColor, minWidth: '104px', minHeight: '104px' }}>
@@ -74,7 +73,7 @@ const QRCard = memo(({ clue, teamColor, teamName, onEdit, onDelete }) => {
 export default function RiddleForge() {
   const [clues, setClues] = useState([]);
   const [teams, setTeams] = useState([]);
-  const [expandedTeam, setExpandedTeam] = useState('PUBLIC'); // Default expand public section
+  const [expandedTeam, setExpandedTeam] = useState('PUBLIC');
   const [form, setForm] = useState({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
 
   const router = useRouter();
@@ -101,13 +100,14 @@ export default function RiddleForge() {
       '#006666', '#990000', '#336600', '#9900CC', '#CC6600',
       '#0000FF', '#00CC66', '#FF00FF', '#333333', '#666600'
     ];
-    const map = { 'ALL': '#d4af37' }; // Gold for Public
+    const map = { 'ALL': '#d4af37' };
     teams.forEach((team, index) => {
       map[team.id] = boldPresets[index % boldPresets.length];
     });
     return map;
   }, [teams]);
 
+  // FIXED FILE UPLOAD LOGIC
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -118,34 +118,50 @@ export default function RiddleForge() {
         const lines = text.trim().split('\n').filter(l => l.includes(','));
         const startIdx = lines[0].toLowerCase().includes('id') ? 1 : 0;
         const uploadRows = [];
+
         for (let i = startIdx; i < lines.length; i++) {
           const row = lines[i].split(',').map(s => s?.trim());
           if (!row[0] || row[0].length < 10) continue;
-          const safePrefix = row[1].toUpperCase().replace(/\s/g, '_');
+
+          const teamId = row[0];
+          const teamName = row[1];
+          const safePrefix = teamName.toUpperCase().replace(/\s/g, '_');
+
+          // Generate personal sequence for Chamber 1 to 5
+          // Chamber 6 is excluded here because it is PUBLIC/UNIVERSAL
           const sequence = [
-            { team_id: row[0], chamber_number: 1, qr_secret_key: `${safePrefix}_START`, riddle_text: row[2] },
-            { team_id: row[0], chamber_number: 2, qr_secret_key: `${safePrefix}_R1`, riddle_text: row[3] },
-            { team_id: row[0], chamber_number: 3, qr_secret_key: `${safePrefix}_PAUSE`, riddle_text: "⚓ CAVE TWO: PAUSE REACHED" },
-            { team_id: row[0], chamber_number: 4, qr_secret_key: `${safePrefix}_RESUME`, riddle_text: row[4] },
-            { team_id: row[0], chamber_number: 5, qr_secret_key: `${safePrefix}_R3`, riddle_text: row[5] },
-            { team_id: row[0], chamber_number: 6, qr_secret_key: `${safePrefix}_WIN`, riddle_text: "🏆 MISSION COMPLETE" }
+            { team_id: teamId, chamber_number: 1, qr_secret_key: `${safePrefix}_START`, riddle_text: row[2] || "START THE HUNT" },
+            { team_id: teamId, chamber_number: 2, qr_secret_key: `${safePrefix}_R1`, riddle_text: row[3] || "FIRST RIDDLE" },
+            { team_id: teamId, chamber_number: 3, qr_secret_key: `${safePrefix}_PAUSE`, riddle_text: "⚓ CAVE TWO: MILESTONE REACHED" },
+            { team_id: teamId, chamber_number: 4, qr_secret_key: `${safePrefix}_RESUME`, riddle_text: row[4] || "RESUME HUNT" },
+            { team_id: teamId, chamber_number: 5, qr_secret_key: `${safePrefix}_R3`, riddle_text: row[5] || "FINAL RIDDLE" }
           ];
+
           sequence.forEach(s => uploadRows.push(s));
         }
-        await supabase.from('clue_settings').upsert(uploadRows);
-        fetchData();
-        alert("SPECTRUM FORGE SUCCESSFUL");
-      } catch (err) { alert("Upload error."); }
+
+        if (uploadRows.length > 0) {
+          const { error } = await supabase.from('clue_settings').upsert(uploadRows, { onConflict: 'team_id,chamber_number' });
+          if (error) throw error;
+          fetchData();
+          alert("CSV INSCRIPTION SUCCESSFUL - CHAMBERS 1-5 GENERATED");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Upload error: " + err.message);
+      }
     };
     reader.readAsText(file);
   };
 
   const handleForge = async (e) => {
     e.preventDefault();
-    const payload = { team_id: form.teamId, chamber_number: form.chamber, qr_secret_key: form.key.trim().toUpperCase(), riddle_text: form.riddle };
-    await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
-    setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
-    fetchData();
+    const payload = { team_id: form.teamId === 'ALL' ? null : form.teamId, chamber_number: form.chamber, qr_secret_key: form.key.trim().toUpperCase(), riddle_text: form.riddle };
+    const { error } = await supabase.from('clue_settings').upsert([form.id ? { id: form.id, ...payload } : payload]);
+    if (!error) {
+      setForm({ id: null, teamId: 'ALL', chamber: 1, key: '', riddle: '' });
+      fetchData();
+    }
   };
 
   const publicClues = clues.filter(c => c.team_id === 'ALL' || c.team_id === null);
@@ -213,7 +229,7 @@ export default function RiddleForge() {
           <h2 className="f-h text-2xl md:text-3xl text-white tracking-[0.3em] uppercase border-b border-[#d4af37]/20 pb-4 font-black text-center md:text-left">Active_Archive</h2>
 
           <div className="space-y-4">
-            {/* PUBLIC SEALS SECTION (NEW) */}
+            {/* PUBLIC SEALS SECTION */}
             <div className="glass-panel rounded-sm overflow-hidden shadow-2xl border-2 border-[#d4af37]/30">
               <button onClick={() => setExpandedTeam(expandedTeam === 'PUBLIC' ? null : 'PUBLIC')} className="w-full p-4 md:p-6 flex justify-between items-center transition-all bg-[#d4af37]/10">
                 <span className="f-h text-xl md:text-3xl text-[#d4af37] uppercase tracking-tighter">PUBLIC SEALS (UNIVERSAL)</span>
@@ -223,7 +239,7 @@ export default function RiddleForge() {
                 {expandedTeam === 'PUBLIC' && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/60 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-[#d4af37]/20">
                     {publicClues.map(clue => (
-                      <QRCard key={clue.id} clue={clue} teamColor="#360521ff" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                      <QRCard key={clue.id} clue={clue} teamColor="#d4af37" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                     ))}
                     {publicClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No public seals forged yet.</p>}
                   </motion.div>
