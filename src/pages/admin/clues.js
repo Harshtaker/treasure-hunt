@@ -268,7 +268,7 @@ export default function RiddleForge() {
                 {expandedTeam === 'PUBLIC' && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-3 md:p-6 bg-black/60 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 border-t border-[#d4af37]/20">
                     {publicClues.map(clue => (
-                      <QRCard key={clue.id} clue={clue} teamColor="#d4af37" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
+                      <QRCard key={clue.id} clue={clue} teamColor="#4e162eff" teamName="PUBLIC" onEdit={(clue) => { setForm({ id: clue.id, teamId: 'ALL', chamber: clue.chamber_number, key: clue.qr_secret_key, riddle: clue.riddle_text }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDelete={async (id) => { if (confirm('Del?')) { await supabase.from('clue_settings').delete().eq('id', id); fetchData(); } }} />
                     ))}
                     {publicClues.length === 0 && <p className="col-span-full text-center f-b text-[10px] opacity-40 py-4 italic">No public seals forged yet.</p>}
                   </motion.div>
