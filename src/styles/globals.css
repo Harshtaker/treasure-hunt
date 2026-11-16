@@ -1,23 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Adding Eagle Lake for the ancient feel and Montserrat for the Pro feel */
-@import url('https://fonts.googleapis.com/css2?family=Eagle+Lake&family=Montserrat:wght@300;900&family=Cinzel:wght@700&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Eagle+Lake&family=Montserrat:wght@300;900&family=Cinzel:wght@500;600;700;800;900&family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap');
 :root {
   --artifact-gold: #d4af37;
   --mystic-white: #e5e7eb;
+  --gold: #d9b46e;
+  --gold-light: #f9e8c5;
+  --teal: #a8cdca;
+  --border: rgba(217, 180, 110, 0.3);
 }
-
 body {
-  /* Replaced black with a deep, dark obsidian stone texture */
   background: radial-gradient(circle at center, #1a1a1a 0%, #050505 100%);
   margin: 0;
   min-height: 100vh;
   overflow-x: hidden;
+  color: #f4e8cf;
 }
-
+* {
+  box-sizing: border-box;
+}
+.f-h {
+  font-family: 'Cinzel', Georgia, serif;
+}
+.f-b {
+  font-family: 'Space Mono', monospace;
+}
 /* THE NEW TITLE STYLE */
 .legendary-title {
   font-family: 'Eagle Lake', cursive;
@@ -29,7 +37,6 @@ body {
   font-size: 5rem;
   letter-spacing: -2px;
 }
-
 .modern-subtext {
   font-family: 'Montserrat', sans-serif;
   font-weight: 300;
@@ -37,7 +44,6 @@ body {
   color: var(--mystic-white);
   text-transform: uppercase;
 }
-
 .portal-input-adv {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(212, 175, 55, 0.3);
@@ -49,21 +55,209 @@ body {
   backdrop-filter: blur(10px);
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
 .portal-input-adv:focus {
   border-color: #d4af37;
   background: rgba(212, 175, 55, 0.1);
   box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
 }
-
-/* Specific border for the Leader field as requested */
 .leader-mark {
   border-left: 3px solid var(--artifact-gold) !important;
 }
-
-/* Helper for the Registration expansion */
 .registration-container {
   border-top: 1px solid rgba(212, 175, 55, 0.1);
   margin-top: 1.5rem;
   padding-top: 1.5rem;
+}
+/* ==================================================================== */
+/* TREASURE HUNT DASHBOARD STYLES */
+/* ==================================================================== */
+.treasure-bg {
+  min-height: 100vh;
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background: #060a09;
+  color: var(--gold-light);
+}
+.treasure-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(180deg, rgba(2, 8, 8, 0.45), rgba(2, 6, 6, 0.8)),
+    url('/cave.png') center / cover no-repeat;
+  pointer-events: none;
+}
+.treasure-bg::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 35%, transparent, rgba(0, 0, 0, 0.38) 80%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 50%, rgba(0, 0, 0, 0.35));
+}
+.hunt-topbar {
+  max-width: 1180px;
+  margin: 0 auto 28px;
+  padding: 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(217, 180, 110, 0.27);
+}
+.hunt-brand {
+  display: block;
+  width: 180px;
+  max-height: 76px;
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 4px 20px rgba(217, 180, 110, 0.2));
+}
+.glass-panel {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(36, 29, 19, 0.9), rgba(5, 14, 14, 0.94));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
+}
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(249, 232, 197, 0.5), transparent);
+  pointer-events: none;
+}
+.glass-btn {
+  background: rgba(5, 10, 9, 0.8);
+  border: 1px solid rgba(217, 180, 110, 0.42);
+  border-radius: 4px;
+  color: var(--gold-light);
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.glass-btn:hover {
+  border-color: var(--gold-light);
+  background: rgba(95, 69, 31, 0.25);
+  transform: translateY(-1px);
+}
+.gold-glow {
+  text-shadow: 0 0 28px rgba(217, 180, 110, 0.22);
+}
+.hunt-eyebrow {
+  color: var(--gold);
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.hunt-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.hunt-progress-seal {
+  min-height: 52px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid rgba(249, 232, 197, 0.18);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.42);
+  color: rgba(249, 232, 197, 0.42);
+  font: 700 17px 'Cinzel', Georgia, serif;
+  transition: all 0.25s ease;
+}
+.hunt-progress-seal.is-collected {
+  background: linear-gradient(145deg, #f5d99a, #bc8a43);
+  color: #171108;
+  border-color: #f9e8c5;
+  box-shadow: 0 0 20px rgba(217, 180, 110, 0.15);
+}
+.hunt-progress-seal.is-current {
+  border-color: var(--gold);
+  color: var(--gold-light);
+}
+.hunt-section-label {
+  color: var(--gold);
+  font: 10px 'Space Mono', monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.clue-text-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: 'DM Sans', sans-serif;
+}
+.hunt-scan-button {
+  background: linear-gradient(110deg, #16473d, #071c19 65%, #12352f);
+  border: 1px solid var(--gold);
+  color: var(--gold-light);
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s ease;
+}
+.hunt-scan-button:hover:not(:disabled) {
+  filter: brightness(1.18);
+}
+.hunt-scan-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.hunt-timer {
+  font-family: 'Cinzel', Georgia, serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.clue-media {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 4px;
+  margin-top: 16px;
+  border: 1px solid rgba(217, 180, 110, 0.3);
+}
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid rgba(217, 180, 110, 0.48);
+  border-radius: 999px;
+  background: rgba(7, 11, 10, 0.9);
+  color: #f5dba5;
+  font: 700 9px 'DM Sans', sans-serif;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.sound-toggle:hover {
+  border-color: #f5dba5;
+  background: rgba(50, 39, 23, 0.95);
+}
+@media (max-width: 640px) {
+  .dashboard-shell {
+    padding: 18px 14px !important;
+  }
+  .hunt-topbar {
+    padding: 10px 0 15px;
+    margin-bottom: 18px;
+  }
+  .hunt-brand {
+    width: 125px;
+    max-height: 58px;
+  }
+  .hunt-progress-seal {
+    min-height: 42px;
+    font-size: 14px;
+  }
 }

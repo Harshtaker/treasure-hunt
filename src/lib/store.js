@@ -1,276 +1,458 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from './supabase';
-
+const EMPTY_STATS = {
+  active: 0,
+  eliminated: 0,
+  finished: 0,
+};
+const TERMINAL_STATUSES = ['ELIMINATED', 'FINISHED'];
+function getTeamStatus(status) {
+  return status || 'ACTIVE';
+}
+function normalizeTeam(dbData) {
+  if (!dbData) return null;
+  let hintUsed = Boolean(dbData.hint_used);
+  let hintRound = dbData.hint_used_round
+    ? Number(dbData.hint_used_round)
+    : null;
+  let hintAt = dbData.hint_used_at || null;
+  if (!hintUsed && typeof window !== 'undefined' && dbData.id) {
+    try {
+      const localUsed = window.localStorage.getItem(
+        `treasure-hunt-hint-consumed:${dbData.id}`
+      );
+      if (localUsed) {
+        hintUsed = true;
+        hintRound = Number(localUsed);
+      }
+    } catch (error) {
+      // Local storage is optional.
+    }
+  }
+  return {
+    id: dbData.id,
+    team_name: dbData.team_name,
+    current_sector: Number(dbData.current_sector) || 0,
+    last_clue_start: dbData.last_clue_start || null,
+    status: getTeamStatus(dbData.status),
+    current_phase:
+      dbData.current_phase ||
+      (Number(dbData.current_sector) > 0 ? 'SAILING' : 'WAITING'),
+    total_time_bank:
+      Number(dbData.total_time_bank) ||
+      Number(dbData.total_time_taken) ||
+      0,
+    total_time_taken:
+      Number(dbData.total_time_taken) ||
+      Number(dbData.total_time_bank) ||
+      0,
+    failed_scans: Number(dbData.failed_scans) || 0,
+    hint_used: hintUsed,
+    hint_used_round: hintRound,
+    hint_used_at: hintAt,
+  };
+}
+function getStats(teams) {
+  return {
+    active: teams.filter(
+      (team) =>
+        !TERMINAL_STATUSES.includes(team.status) &&
+        team.current_phase !== 'PLANKED'
+    ).length,
+    eliminated: teams.filter(
+      (team) =>
+        team.status === 'ELIMINATED' ||
+        team.current_phase === 'PLANKED'
+    ).length,
+    finished: teams.filter(
+      (team) =>
+        team.status === 'FINISHED' ||
+        team.current_phase === 'FINISHED'
+    ).length,
+  };
+}
+async function updateTeamRecord(teamId, updates) {
+  const { error } = await supabase
+    .from('teams')
+    .update(updates)
+    .eq('id', teamId);
+  if (error) throw error;
+}
+function broadcastScan(payload) {
+  try {
+    const channel = supabase.channel('live_monitoring');
+    channel.subscribe((status) => {
+      if (status !== 'SUBSCRIBED') return;
+      channel
+        .send({
+          type: 'broadcast',
+          event: 'scan_event',
+          payload,
+        })
+        .finally(() => {
+          supabase.removeChannel(channel);
+        });
+    });
+  } catch (error) {
+    console.warn('Monitoring broadcast failed:', error);
+  }
+}
 // ========================================
-// PLAYER STORE (persisted to localStorage)
+// PLAYER STORE
 // ========================================
 export const usePlayerStore = create(
   persist(
     (set, get) => ({
-      // --- State ---
       team: null,
       revealedClue: null,
       isEliminated: false,
       isFinished: false,
-
-      // --- Actions ---
-
-      /**
-       * Called on login. Merges DB data with any existing local session.
-       * Always takes the HIGHEST sector to prevent progress loss.
-       */
       login: (dbData) => {
-        const existing = get().team;
-
-        // If we have a local session for the SAME team with higher progress, keep it
-        if (
-          existing &&
-          existing.id === dbData.id &&
-          existing.current_sector > (dbData.current_sector || 0)
-        ) {
-          // Local is ahead of DB — keep local, but silently push local state to DB
-          const localTeam = existing;
-          supabase
-            .from('teams')
-            .update({
-              current_sector: localTeam.current_sector,
-              last_clue_start: localTeam.last_clue_start,
-              status: localTeam.status,
-              total_time_bank: localTeam.total_time_bank,
-            })
-            .eq('id', localTeam.id)
-            .then(({ error }) => {
-              if (error) console.error('Failed to sync local-ahead state to DB:', error);
-            });
-
-          // Don't overwrite — keep existing state
-          return;
+        if (!dbData?.id) {
+          throw new Error('Invalid team record.');
         }
-
-        // DB is equal or ahead — use DB data
+        const team = normalizeTeam(dbData);
         set({
-          team: {
-            id: dbData.id,
-            team_name: dbData.team_name,
-            current_sector: dbData.current_sector || 0,
-            last_clue_start: dbData.last_clue_start,
-            status: dbData.status || 'ACTIVE',
-            current_phase: dbData.current_phase || 'WAITING',
-            total_time_bank: dbData.total_time_bank || 0,
-          },
+          team,
           revealedClue: null,
-          isEliminated: dbData.status === 'ELIMINATED',
-          isFinished: dbData.status === 'FINISHED',
+          isEliminated:
+            team.status === 'ELIMINATED' ||
+            team.current_phase === 'PLANKED',
+          isFinished:
+            team.status === 'FINISHED' ||
+            team.current_phase === 'FINISHED',
         });
       },
-
       logout: () => {
-        set({ team: null, revealedClue: null, isEliminated: false, isFinished: false });
+        set({
+          team: null,
+          revealedClue: null,
+          isEliminated: false,
+          isFinished: false,
+        });
       },
-
-      setRevealedClue: (clue) => set({ revealedClue: clue }),
-
-      setEliminated: () => {
+      setRevealedClue: (clue) => {
+        set({ revealedClue: clue });
+      },
+      consumeHintLocally: (sector) => {
         const { team } = get();
-        set({ isEliminated: true });
-        // Also update DB
-        if (team) {
-          supabase
+        if (!team) return;
+        const updated = {
+          ...team,
+          hint_used: true,
+          hint_used_round: Number(sector),
+          hint_used_at: new Date().toISOString(),
+        };
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(
+              `treasure-hunt-hint-consumed:${team.id}`,
+              String(sector)
+            );
+          }
+        } catch (error) {
+          // Local storage is optional.
+        }
+        set({ team: updated });
+      },
+      // Update team state from remote Realtime event
+      // without wiping revealedClue.
+      updateTeamFromRemote: (dbData) => {
+        if (!dbData?.id) return;
+        const current = get().team;
+        if (current && current.id !== dbData.id) return;
+        const updated = normalizeTeam(dbData);
+        const isEliminated =
+          updated.status === 'ELIMINATED' ||
+          updated.current_phase === 'PLANKED';
+        const isFinished =
+          updated.status === 'FINISHED' ||
+          updated.current_phase === 'FINISHED';
+        set({
+          team: updated,
+          isEliminated,
+          isFinished,
+        });
+      },
+      // Safely eliminate a team only if its latest database
+      // state still matches the timer state that expired.
+      setEliminated: async () => {
+        const { team } = get();
+        if (!team?.id) return;
+        if (
+          team.status === 'FINISHED' ||
+          team.current_phase === 'FINISHED'
+        ) {
+          return;
+        }
+        try {
+          const { data: latestTeam, error: fetchError } = await supabase
             .from('teams')
-            .update({ status: 'ELIMINATED' })
+            .select(
+              'id,status,current_phase,last_clue_start,current_sector'
+            )
             .eq('id', team.id)
-            .then();
+            .single();
+          if (fetchError) throw fetchError;
+          if (!latestTeam) return;
+          // Do not eliminate a team that an admin has already
+          // revived, paused, finished, or otherwise changed.
+          if (
+            latestTeam.status !== 'ACTIVE' ||
+            latestTeam.current_phase !== 'SAILING' ||
+            !latestTeam.last_clue_start
+          ) {
+            await get().syncFromDB();
+            return;
+          }
+          const latestStart = new Date(
+            latestTeam.last_clue_start
+          ).getTime();
+          if (!Number.isFinite(latestStart)) {
+            await get().syncFromDB();
+            return;
+          }
+          const elapsedSeconds = Math.floor(
+            (Date.now() - latestStart) / 1000
+          );
+          // The standard round duration is 40 minutes.
+          if (elapsedSeconds < 40 * 60) {
+            await get().syncFromDB();
+            return;
+          }
+          // Conditional update prevents an old timer callback
+          // from overwriting a newer admin action.
+          const { data: updatedRows, error: updateError } =
+            await supabase
+              .from('teams')
+              .update({
+                status: 'ELIMINATED',
+                current_phase: 'PLANKED',
+              })
+              .eq('id', team.id)
+              .eq('status', latestTeam.status)
+              .eq('current_phase', latestTeam.current_phase)
+              .eq('current_sector', latestTeam.current_sector)
+              .eq('last_clue_start', latestTeam.last_clue_start)
+              .select('id');
+          if (updateError) throw updateError;
+          if (!updatedRows || updatedRows.length === 0) {
+            await get().syncFromDB();
+            return;
+          }
+          const currentTeam = get().team;
+          if (currentTeam?.id === team.id) {
+            set({
+              isEliminated: true,
+              isFinished: false,
+              team: {
+                ...currentTeam,
+                status: 'ELIMINATED',
+                current_phase: 'PLANKED',
+              },
+            });
+          }
+        } catch (error) {
+          console.error('Failed to update elimination status:', error);
+          await get().syncFromDB();
         }
       },
-
-      setFinished: () => set({ isFinished: true }),
-
-      /**
-       * Called after a successful QR scan.
-       * 1. Calculates round duration and updates total_time_bank
-       * 2. Handles the 6-QR sequence flow
-       * 3. Syncs immediately to Supabase
-       */
+      setFinished: () => {
+        const { team } = get();
+        if (!team) return;
+        set({
+          isFinished: true,
+          isEliminated: false,
+          team: {
+            ...team,
+            status: 'FINISHED',
+            current_phase: 'FINISHED',
+          },
+        });
+      },
       advanceRound: async (targetRound, clueData) => {
         const { team } = get();
-        if (!team) return null;
-
+        if (
+          !team ||
+          !Number.isInteger(targetRound) ||
+          targetRound < 1
+        ) {
+          return null;
+        }
+        if (
+          TERMINAL_STATUSES.includes(team.status) ||
+          team.current_phase === 'PLANKED'
+        ) {
+          return null;
+        }
         const now = new Date();
         const nowISO = now.toISOString();
-
-        // FIXED: 6 QR Flow logic
         const isFinal = targetRound === 6;
-        const isCove = targetRound === 3;
-        const isResume = targetRound === 4;
-
         let sessionSeconds = 0;
-
-        // Calculate time spent in the current round only if clock is running
-        if (team.last_clue_start && team.current_phase !== 'COVE' && team.current_sector > 0) {
-          const startTime = new Date(team.last_clue_start).getTime();
-          sessionSeconds = Math.floor((now.getTime() - startTime) / 1000);
+        if (
+          team.last_clue_start &&
+          team.current_phase !== 'COVE' &&
+          team.current_phase !== 'WAITING' &&
+          team.current_sector > 0
+        ) {
+          const start = new Date(team.last_clue_start).getTime();
+          if (Number.isFinite(start)) {
+            sessionSeconds = Math.max(
+              0,
+              Math.floor((now.getTime() - start) / 1000)
+            );
+          }
         }
-
-        // Update the accumulated time bank
-        const newTimeBank = (team.total_time_bank || 0) + sessionSeconds;
-
-        let targetPhase = 'SAILING';
-        if (isFinal) targetPhase = 'FINISHED';
-        if (isCove) targetPhase = 'COVE';
-
+        const newTimeBank =
+          (team.total_time_bank || 0) + sessionSeconds;
+        const targetPhase = isFinal ? 'FINISHED' : 'SAILING';
+        const targetStatus = isFinal ? 'FINISHED' : 'ACTIVE';
         const nextTeam = {
           ...team,
           current_sector: targetRound,
-          last_clue_start: isCove ? null : nowISO, // Pause clock at Cove
+          last_clue_start: isFinal ? null : nowISO,
           current_phase: targetPhase,
-          status: isFinal ? 'FINISHED' : 'ACTIVE',
+          status: targetStatus,
           total_time_bank: newTimeBank,
-          total_time_taken: newTimeBank // Backup for UI sorting
+          total_time_taken: newTimeBank,
         };
-
-        // UI Clue Logic
-        const nextClue = (isFinal || isCove) ? null : clueData.riddle_text;
-
-        // ========== STEP 1: INSTANT LOCAL SAVE ==========
+        const nextClue = isFinal
+          ? null
+          : clueData?.riddle_text ?? null;
         set({
           team: nextTeam,
           revealedClue: nextClue,
           isFinished: isFinal,
+          isEliminated: false,
         });
-
-        // ========== STEP 2: DIRECT DB UPDATE ==========
         try {
-          const { error } = await supabase
-            .from('teams')
-            .update({
-              current_sector: targetRound,
-              last_clue_start: isCove ? null : nowISO,
-              current_phase: targetPhase,
-              status: isFinal ? 'FINISHED' : 'ACTIVE',
-              total_time_bank: newTimeBank,
-              total_time_taken: newTimeBank
-            })
-            .eq('id', team.id);
-
-          if (error) {
-            console.error('DB update failed, will retry:', error);
-            setTimeout(async () => {
-              const retryState = get().team;
-              if (retryState && retryState.id === team.id) {
-                await supabase
-                  .from('teams')
-                  .update({
-                    current_sector: retryState.current_sector,
-                    last_clue_start: retryState.last_clue_start,
-                    current_phase: retryState.current_phase,
-                    status: retryState.status,
-                    total_time_bank: retryState.total_time_bank,
-                  })
-                  .eq('id', team.id);
-              }
-            }, 3000);
-          }
-        } catch (e) {
-          console.error('DB update exception:', e);
-        }
-
-        // ========== STEP 3: BROADCAST TO ADMIN ==========
-        try {
-          const channel = supabase.channel('live_monitoring');
-          channel.send({
-            type: 'broadcast',
-            event: 'scan_event',
-            payload: {
-              team: team.team_name,
-              teamId: team.id,
-              round: targetRound,
-              status: isFinal ? 'FINISHED' : 'ACTIVE',
-              timestamp: nowISO,
-            },
+          await updateTeamRecord(team.id, {
+            current_sector: targetRound,
+            last_clue_start: nextTeam.last_clue_start,
+            current_phase: targetPhase,
+            status: nextTeam.status,
+            total_time_bank: newTimeBank,
+            total_time_taken: newTimeBank,
           });
-        } catch (_) { }
-
+          broadcastScan({
+            team: team.team_name,
+            teamId: team.id,
+            round: targetRound,
+            status: nextTeam.status,
+            timestamp: nowISO,
+          });
+        } catch (error) {
+          console.error('Round update failed:', error);
+          await get().syncFromDB();
+        }
         return nextTeam;
       },
-
-      /**
-       * Called after a failed QR scan.
-       */
       recordFailedScan: async () => {
         const { team } = get();
         if (!team) return;
-
         try {
-          const { data } = await supabase.from('teams').select('failed_scans').eq('id', team.id).single();
-          if (data) {
-            await supabase.from('teams').update({ failed_scans: (data.failed_scans || 0) + 1 }).eq('id', team.id);
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      },
-
-      /**
-       * Reconciles localStorage vs DB on page load.
-       */
-      syncFromDB: async () => {
-        const { team } = get();
-        if (!team) return;
-
-        try {
-          const { data: db } = await supabase
+          const { data, error } = await supabase
             .from('teams')
-            .select('*')
+            .select('failed_scans')
             .eq('id', team.id)
             .single();
-
-          if (!db) return;
-
-          if (db.status === 'ELIMINATED') {
-            set({ isEliminated: true, team: { ...team, status: 'ELIMINATED' } });
+          if (error) throw error;
+          const updatedScans = (data?.failed_scans || 0) + 1;
+          await updateTeamRecord(team.id, {
+            failed_scans: updatedScans,
+          });
+          const currentTeam = get().team;
+          if (currentTeam?.id === team.id) {
+            set({
+              team: {
+                ...currentTeam,
+                failed_scans: updatedScans,
+              },
+            });
+          }
+        } catch (error) {
+          console.error('Failed to record scan:', error);
+        }
+      },
+      syncFromDB: async () => {
+        const { team } = get();
+        if (!team?.id) return;
+        const teamId = team.id;
+        try {
+          const { data, error } = await supabase
+            .from('teams')
+            .select('*')
+            .eq('id', teamId)
+            .single();
+          if (error) throw error;
+          if (!data) return;
+          // Do not apply a response to a different logged-in team.
+          if (get().team?.id !== teamId) return;
+          const dbTeam = normalizeTeam(data);
+          if (
+            dbTeam.status === 'ELIMINATED' ||
+            dbTeam.current_phase === 'PLANKED'
+          ) {
+            set({
+              team: dbTeam,
+              isEliminated: true,
+              isFinished: false,
+              revealedClue: null,
+            });
             return;
           }
-          if (db.status === 'FINISHED') {
-            set({ isFinished: true, team: { ...team, status: 'FINISHED' } });
+          if (
+            dbTeam.status === 'FINISHED' ||
+            dbTeam.current_phase === 'FINISHED'
+          ) {
+            set({
+              team: dbTeam,
+              isFinished: true,
+              isEliminated: false,
+              revealedClue: null,
+            });
             return;
           }
-
-          if (db.current_sector > team.current_sector || db.current_phase !== team.current_phase) {
-            set({ team: { ...db } });
-
-            if (db.current_sector > 0 && db.current_phase === 'SAILING') {
-              const { data: clue } = await supabase
-                .from('clue_settings')
-                .select('riddle_text')
-                .eq('chamber_number', db.current_sector)
-                .maybeSingle();
-              if (clue) set({ revealedClue: clue.riddle_text });
-            }
-          } else if (team.current_sector > (db.current_sector || 0)) {
-            await supabase
-              .from('teams')
-              .update({
-                current_sector: team.current_sector,
-                last_clue_start: team.last_clue_start,
-                status: team.status,
-                total_time_bank: team.total_time_bank
-              })
-              .eq('id', team.id);
-          }
-
-          const currentClue = get().revealedClue;
-          const currentSector = get().team?.current_sector;
-          if (currentSector > 0 && !currentClue && db.current_phase === 'SAILING') {
-            const { data: clue } = await supabase
+          let revealedClue = get().revealedClue;
+          const shouldReloadClue =
+            dbTeam.current_sector > 0 &&
+            dbTeam.current_sector < 6 &&
+            dbTeam.current_phase === 'SAILING' &&
+            (
+              dbTeam.current_sector !== team.current_sector ||
+              dbTeam.current_phase !== team.current_phase ||
+              !revealedClue
+            );
+          if (shouldReloadClue) {
+            // First check team-specific clue, then universal fallback.
+            const { data: teamClue } = await supabase
               .from('clue_settings')
               .select('riddle_text')
-              .eq('chamber_number', currentSector)
+              .eq('chamber_number', dbTeam.current_sector)
+              .eq('team_id', dbTeam.id)
               .maybeSingle();
-            if (clue) set({ revealedClue: clue.riddle_text });
+            if (teamClue?.riddle_text) {
+              revealedClue = teamClue.riddle_text;
+            } else {
+              const { data: sharedClue } = await supabase
+                .from('clue_settings')
+                .select('riddle_text')
+                .eq('chamber_number', dbTeam.current_sector)
+                .or('team_id.is.null,team_id.eq.ALL')
+                .maybeSingle();
+              revealedClue = sharedClue?.riddle_text ?? null;
+            }
           }
-        } catch (e) {
-          console.error('Background sync failed:', e);
+          if (get().team?.id !== teamId) return;
+          set({
+            team: dbTeam,
+            revealedClue,
+            isEliminated: false,
+            isFinished: false,
+          });
+        } catch (error) {
+          console.error('Background sync failed:', error);
         }
       },
     }),
@@ -285,86 +467,97 @@ export const usePlayerStore = create(
     }
   )
 );
-
 // ========================================
-// ADMIN STORE (persisted to localStorage)
+// ADMIN STORE
 // ========================================
 export const useAdminStore = create(
   persist(
     (set, get) => ({
-      // --- State ---
       isAdmin: false,
       teams: [],
-      stats: { active: 0, eliminated: 0, finished: 0 },
+      stats: { ...EMPTY_STATS },
       lastSync: '',
       _realtimeCleanup: null,
-
-      // --- Actions ---
-      loginAdmin: () => set({ isAdmin: true }),
-
+      _fetchRequestId: 0,
+      loginAdmin: () => {
+        set({ isAdmin: true });
+      },
       logoutAdmin: () => {
         const cleanup = get()._realtimeCleanup;
-        if (typeof cleanup === 'function') cleanup();
+        if (typeof cleanup === 'function') {
+          cleanup();
+        }
         set({
           isAdmin: false,
           teams: [],
-          stats: { active: 0, eliminated: 0, finished: 0 },
+          stats: { ...EMPTY_STATS },
+          lastSync: '',
           _realtimeCleanup: null,
+          _fetchRequestId: get()._fetchRequestId + 1,
         });
       },
-
       fetchTeams: async () => {
+        // Each request gets an ID. Only the newest request
+        // is allowed to update the store.
+        const requestId = get()._fetchRequestId + 1;
+        set({ _fetchRequestId: requestId });
         try {
           const { data, error } = await supabase
             .from('teams')
             .select('*')
             .order('current_sector', { ascending: false })
             .order('total_time_bank', { ascending: true });
-
-          if (error) {
+          if (error) throw error;
+          // Ignore stale responses from earlier requests.
+          if (get()._fetchRequestId !== requestId) return;
+          const teams = data || [];
+          set({
+            teams,
+            stats: getStats(teams),
+            lastSync: new Date().toLocaleTimeString(),
+          });
+        } catch (error) {
+          if (get()._fetchRequestId === requestId) {
             console.error('Failed to fetch teams:', error);
-            return;
           }
-
-          if (data) {
-            const active = data.filter(
-              (t) => t.status !== 'ELIMINATED' && t.status !== 'FINISHED'
-            ).length;
-            const eliminated = data.filter((t) => t.status === 'ELIMINATED').length;
-            const finished = data.filter((t) => t.status === 'FINISHED').length;
-            set({
-              teams: data,
-              lastSync: new Date().toLocaleTimeString(),
-              stats: { active, eliminated, finished },
-            });
-          }
-        } catch (e) {
-          console.error('Fetch teams exception:', e);
         }
       },
-
       subscribeRealtime: () => {
-        const fetchFn = get().fetchTeams;
-
+        const existingCleanup = get()._realtimeCleanup;
+        if (typeof existingCleanup === 'function') {
+          existingCleanup();
+        }
+        let active = true;
+        const fetchTeams = () => {
+          if (active) {
+            get().fetchTeams();
+          }
+        };
         const pgChannel = supabase
           .channel('admin-pg-changes')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'teams' }, () => fetchFn())
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'teams' }, () => fetchFn())
-          .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'teams' }, () => fetchFn())
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'teams',
+            },
+            fetchTeams
+          )
           .subscribe();
-
         const broadcastChannel = supabase
           .channel('live_monitoring')
-          .on('broadcast', { event: 'scan_event' }, (payload) => {
-            setTimeout(() => fetchFn(), 500);
-          })
+          .on(
+            'broadcast',
+            { event: 'scan_event' },
+            fetchTeams
+          )
           .subscribe();
-
         const cleanup = () => {
+          active = false;
           supabase.removeChannel(pgChannel);
           supabase.removeChannel(broadcastChannel);
         };
-
         set({ _realtimeCleanup: cleanup });
         return cleanup;
       },

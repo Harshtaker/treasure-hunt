@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://cxptcntplvuyqdolqoxo.supabase.co';
-const supabaseKey = 'sb_publishable_rtdYct-iYIHyikvxnZRMCw_y2X9iLOw';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://cxptcntplvuyqdolqoxo.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function test() {
@@ -23,7 +23,7 @@ async function test() {
       status: 'ACTIVE'
     })
     .eq('id', team.id)
-    .select(); // Ask Supabase to return the updated row
+    .select();
 
   if (error) {
     console.error('UPDATE ERROR:', error);

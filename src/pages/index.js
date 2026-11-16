@@ -1,17 +1,15 @@
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { usePlayerStore, useAdminStore } from '../lib/store';
-
+import { playSound } from '../lib/sound';
 const AUDIO = {
   ambience: '/audio/ambience.mp3',
   click: '/audio/ui-click.mp3',
   success: '/audio/scan-success.mp3',
   error: '/audio/wrong-scan.mp3',
 };
-
 const CAPTAIN_MESSAGES = [
   {
     title: 'Arrr, adventurer!',
@@ -26,7 +24,6 @@ const CAPTAIN_MESSAGES = [
     text: 'The cleverest pirate knows that every little clue could lead to a great treasure.',
   },
 ];
-
 const WELCOME_MESSAGES = {
   first: {
     eyebrow: 'A NEW VOYAGE BEGINS',
@@ -41,7 +38,6 @@ const WELCOME_MESSAGES = {
       'The tide has brought you back. Keep your wits sharp, trust your crew, and let us see what treasure awaits.',
   },
 };
-
 function CompassEmblem({ size = 64, className = '' }) {
   return (
     <svg
@@ -70,10 +66,8 @@ function CompassEmblem({ size = 64, className = '' }) {
     </svg>
   );
 }
-
 function BrandLogo({ className = '', alt = 'Treasure Hunt 2K26' }) {
   const [failed, setFailed] = useState(false);
-
   if (failed) {
     return (
       <div className={`brand-fallback ${className}`} role="img" aria-label={alt}>
@@ -81,7 +75,6 @@ function BrandLogo({ className = '', alt = 'Treasure Hunt 2K26' }) {
       </div>
     );
   }
-
   return (
     <img
       src="/treasure-hunt-logo.png"
@@ -92,10 +85,8 @@ function BrandLogo({ className = '', alt = 'Treasure Hunt 2K26' }) {
     />
   );
 }
-
 function HorizontalBrandLogo({ className = '' }) {
   const [failed, setFailed] = useState(false);
-
   if (failed) {
     return (
       <div className={`horizontal-fallback ${className}`}>
@@ -107,7 +98,6 @@ function HorizontalBrandLogo({ className = '' }) {
       </div>
     );
   }
-
   return (
     <img
       src="/treasure-hunt-horizontal.png"
@@ -118,7 +108,6 @@ function HorizontalBrandLogo({ className = '' }) {
     />
   );
 }
-
 function SoundToggle({ enabled, onToggle }) {
   return (
     <button
@@ -133,20 +122,15 @@ function SoundToggle({ enabled, onToggle }) {
     </button>
   );
 }
-
 function CaptainCorner({ reducedMotion }) {
   const [messageIndex, setMessageIndex] = useState(0);
-
   useEffect(() => {
     const interval = window.setInterval(() => {
       setMessageIndex((current) => (current + 1) % CAPTAIN_MESSAGES.length);
     }, 6500);
-
     return () => window.clearInterval(interval);
   }, []);
-
   const message = CAPTAIN_MESSAGES[messageIndex];
-
   return (
     <div className="captain-hero">
       <AnimatePresence mode="wait" initial={false}>
@@ -169,7 +153,6 @@ function CaptainCorner({ reducedMotion }) {
           </div>
         </motion.div>
       </AnimatePresence>
-
       <motion.div
         className="captain-character-wrap"
         animate={
@@ -193,10 +176,8 @@ function CaptainCorner({ reducedMotion }) {
     </div>
   );
 }
-
 function PortalCard({ type, onClick, reducedMotion }) {
   const isTeam = type === 'TEAM';
-
   return (
     <motion.button
       type="button"
@@ -233,7 +214,6 @@ function PortalCard({ type, onClick, reducedMotion }) {
     </motion.button>
   );
 }
-
 function PasswordField({
   id,
   label,
@@ -271,46 +251,48 @@ function PasswordField({
     </label>
   );
 }
-
 export default function Index() {
   const router = useRouter();
   const reducedMotion = useReducedMotion();
-
   const ambienceRef = useRef(null);
   const clickRef = useRef(null);
   const successRef = useRef(null);
   const errorRef = useRef(null);
   const welcomeTimerRef = useRef(null);
-
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState('IDLE');
   const [loading, setLoading] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState(null);
-
   const [teamError, setTeamError] = useState('');
   const [adminError, setAdminError] = useState('');
   const [teamForm, setTeamForm] = useState({ teamName: '', password: '' });
   const [adminForm, setAdminForm] = useState({ username: '', password: '' });
-
   const playerLogin = usePlayerStore((state) => state.login);
   const adminLogin = useAdminStore((state) => state.loginAdmin);
-
   useEffect(() => {
     setHydrated(true);
   }, []);
-
   useEffect(() => {
     if (!hydrated || !router.isReady) return;
-
     if (usePlayerStore.getState().team) {
       router.replace('/dashboard');
     } else if (useAdminStore.getState().isAdmin) {
-      router.replace('/admin/dashboard');
+      let active = true;
+      supabase.auth.getUser().then(({ data, error }) => {
+        if (!active) return;
+        if (!error && data?.user?.id === process.env.NEXT_PUBLIC_ADMIN_USER_ID) {
+          router.replace('/admin/dashboard');
+        } else {
+          useAdminStore.getState().logoutAdmin();
+        }
+      });
+      return () => {
+        active = false;
+      };
     }
   }, [hydrated, router]);
-
   useEffect(() => {
     const createAudio = (src, loop = false, volume = 0.35) => {
       const audio = new Audio(src);
@@ -319,15 +301,12 @@ export default function Index() {
       audio.preload = 'none';
       return audio;
     };
-
     ambienceRef.current = createAudio(AUDIO.ambience, true, 0.18);
     clickRef.current = createAudio(AUDIO.click);
     successRef.current = createAudio(AUDIO.success, false, 0.45);
     errorRef.current = createAudio(AUDIO.error, false, 0.4);
-
     return () => {
       clearTimeout(welcomeTimerRef.current);
-
       [
         ambienceRef.current,
         clickRef.current,
@@ -339,49 +318,42 @@ export default function Index() {
         audio.removeAttribute('src');
         audio.load();
       });
-
       ambienceRef.current = null;
       clickRef.current = null;
       successRef.current = null;
       errorRef.current = null;
     };
   }, []);
-
   useEffect(() => {
     const audio = ambienceRef.current;
     if (!audio) return;
-
     if (soundEnabled) {
-      audio.play().catch(() => {});
+      audio.play().catch(() => { });
     } else {
       audio.pause();
       audio.currentTime = 0;
     }
   }, [soundEnabled]);
-
   const playEffect = useCallback(
     (type = 'click') => {
       if (!soundEnabled) return;
-
+      playSound(type, soundEnabled);
       const audioMap = {
         click: clickRef.current,
         success: successRef.current,
         error: errorRef.current,
       };
-
       const audio = audioMap[type];
       if (!audio) return;
-
       try {
         audio.currentTime = 0;
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
       } catch {
         // Audio effects are optional.
       }
     },
     [soundEnabled]
   );
-
   const openPortal = (nextMode) => {
     if (loading) return;
     playEffect('click');
@@ -390,44 +362,34 @@ export default function Index() {
     setShowPassword(false);
     setMode(nextMode);
   };
-
   const prepareCaptainWelcome = (identity, role) => {
     const key =
       `treasure-hunt-2k26-welcomed-${role}-` +
       String(identity).trim().toLowerCase();
-
     let returning = false;
-
     try {
       returning = window.localStorage.getItem(key) === 'true';
       window.localStorage.setItem(key, 'true');
     } catch {
       // Continue if browser storage is unavailable.
     }
-
     setWelcomeMessage(
       returning ? WELCOME_MESSAGES.returning : WELCOME_MESSAGES.first
     );
-
     clearTimeout(welcomeTimerRef.current);
     welcomeTimerRef.current = setTimeout(() => setWelcomeMessage(null), 2350);
   };
-
   const handleTeamLogin = async (event) => {
     event.preventDefault();
     if (loading) return;
-
     const teamName = teamForm.teamName.trim();
     const password = teamForm.password;
-
     if (!teamName || !password) {
       setTeamError('Enter your registered team name and password.');
       return;
     }
-
     setLoading(true);
     setTeamError('');
-
     try {
       const { data, error } = await supabase
         .from('teams')
@@ -435,24 +397,20 @@ export default function Index() {
         .eq('team_name', teamName)
         .eq('password', password)
         .maybeSingle();
-
       if (error) {
         console.error('Team login error:', error);
         setTeamError('Unable to verify your details. Please try again.');
         playEffect('error');
         return;
       }
-
       if (!data) {
         setTeamError('Incorrect team name or password.');
         playEffect('error');
         return;
       }
-
       playerLogin(data);
       playEffect('success');
       prepareCaptainWelcome(data.team_name || teamName, 'team');
-
       await new Promise((resolve) => setTimeout(resolve, 2350));
       await router.push('/dashboard');
     } catch (error) {
@@ -463,47 +421,44 @@ export default function Index() {
       setLoading(false);
     }
   };
-
+  // Admin login now uses Supabase Auth instead of the admins table.
   const handleAdminLogin = async (event) => {
     event.preventDefault();
     if (loading) return;
-
-    const username = adminForm.username.trim();
+    const email = adminForm.username.trim().toLowerCase();
     const password = adminForm.password;
-
-    if (!username || !password) {
-      setAdminError('Enter your admin username and password.');
+    if (!email || !password) {
+      setAdminError('Enter your admin email and password.');
       return;
     }
-
     setLoading(true);
     setAdminError('');
-
     try {
-      const { data, error } = await supabase
-        .from('admins')
-        .select('username')
-        .eq('username', username)
-        .eq('password', password)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Admin login error:', error);
-        setAdminError('Unable to verify access. Please try again.');
+      const adminUserId = process.env.NEXT_PUBLIC_ADMIN_USER_ID;
+      if (!adminUserId) {
+        setAdminError(
+          'Admin authentication is not configured. Set NEXT_PUBLIC_ADMIN_USER_ID.'
+        );
+        return;
+      }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error || !data?.user) {
+        setAdminError('Incorrect admin email or password.');
         playEffect('error');
         return;
       }
-
-      if (!data) {
-        setAdminError('Incorrect username or password.');
+      if (data.user.id !== adminUserId) {
+        await supabase.auth.signOut();
+        setAdminError('This account is not authorized for admin access.');
         playEffect('error');
         return;
       }
-
       adminLogin();
       playEffect('success');
-      prepareCaptainWelcome(data.username || username, 'admin');
-
+      prepareCaptainWelcome(email, 'admin');
       await new Promise((resolve) => setTimeout(resolve, 2350));
       await router.push('/admin/dashboard');
     } catch (error) {
@@ -514,7 +469,6 @@ export default function Index() {
       setLoading(false);
     }
   };
-
   if (!hydrated) {
     return (
       <div
@@ -523,40 +477,32 @@ export default function Index() {
       />
     );
   }
-
   return (
     <div className="hunt-page relative isolate min-h-[100svh] overflow-hidden bg-[#080b0c] text-[#f4e8cf]">
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
-
         :root {
           color-scheme: dark;
           --gold: #e0bb76;
           --gold-bright: #f5dba5;
           --parchment: #f4e8cf;
         }
-
         html, body, #__next {
           min-height: 100%;
           margin: 0;
           background: #080b0c;
         }
-
         body, button, input {
           font-family: 'DM Sans', sans-serif;
         }
-
         button { -webkit-tap-highlight-color: transparent; }
-
         button:focus-visible, input:focus-visible {
           outline: 2px solid var(--gold-bright);
           outline-offset: 3px;
         }
-
         .hunt-title, .portal-title, .welcome-title {
           font-family: 'Cinzel', Georgia, serif;
         }
-
         .hunt-backdrop {
           position: fixed;
           inset: 0;
@@ -564,7 +510,6 @@ export default function Index() {
           overflow: hidden;
           background: #080b0c;
         }
-
         .hunt-backdrop-image {
           position: absolute;
           inset: 0;
@@ -574,7 +519,6 @@ export default function Index() {
           object-position: center;
           opacity: .48;
         }
-
         .hunt-backdrop-overlay {
           position: absolute;
           inset: 0;
@@ -582,7 +526,6 @@ export default function Index() {
             radial-gradient(ellipse at 50% 25%, rgba(17,46,48,.04), transparent 50%),
             linear-gradient(180deg, rgba(3,6,7,.35), rgba(5,8,9,.55) 44%, #080b0c 100%);
         }
-
         .hunt-grid {
           position: absolute;
           inset: 0;
@@ -594,7 +537,6 @@ export default function Index() {
           mask-image: linear-gradient(to bottom, black, transparent 75%);
           pointer-events: none;
         }
-
         .hunt-header {
           position: relative;
           z-index: 10;
@@ -605,7 +547,6 @@ export default function Index() {
           border-bottom: 1px solid rgba(217,180,110,.23);
           padding-bottom: 18px;
         }
-
         .sound-toggle {
           display: inline-flex;
           min-height: 39px;
@@ -622,14 +563,11 @@ export default function Index() {
           letter-spacing: .13em;
           white-space: nowrap;
         }
-
         .sound-toggle span { font-size: 17px; line-height: 1; }
-
         .sound-toggle:hover {
           border-color: rgba(224,187,118,.6);
           background: rgba(224,187,118,.06);
         }
-
         /* Hero title and emblem */
         .hero-layout {
           display: grid;
@@ -639,25 +577,21 @@ export default function Index() {
           width: 100%;
           margin: 0 auto;
         }
-
         .hero-main {
           min-width: 0;
           text-align: center;
         }
-
         .hero-emblem {
           display: flex;
           justify-content: center;
           margin-bottom: 18px;
         }
-
         .hero-emblem img {
           width: min(100%, 340px);
           max-height: 190px;
           object-fit: contain;
           filter: drop-shadow(0 8px 26px rgba(224,187,118,.16));
         }
-
         .hero-eyebrow {
           display: flex;
           align-items: center;
@@ -670,14 +604,12 @@ export default function Index() {
           letter-spacing: .38em;
           text-transform: uppercase;
         }
-
         .hero-eyebrow::before, .hero-eyebrow::after {
           content: '';
           width: clamp(24px, 5vw, 66px);
           height: 1px;
           background: rgba(215,173,102,.7);
         }
-
         .hero-title {
           margin: 0;
           font-family: 'Cinzel', Georgia, serif;
@@ -689,7 +621,6 @@ export default function Index() {
           color: #f9e8c5;
           text-wrap: balance;
         }
-
         .hero-title span {
           display: block;
           margin-top: 8px;
@@ -698,7 +629,6 @@ export default function Index() {
           background-clip: text;
           color: transparent;
         }
-
         .hero-description {
           max-width: 580px;
           margin: 24px auto 0;
@@ -706,7 +636,6 @@ export default function Index() {
           font-size: 15px;
           line-height: 1.9;
         }
-
         .hero-steps {
           display: flex;
           flex-wrap: wrap;
@@ -720,9 +649,7 @@ export default function Index() {
           letter-spacing: .2em;
           text-transform: uppercase;
         }
-
         .hero-steps .star { color: #d9b46e; }
-
         /* Captain layout */
         .captain-hero {
           display: flex;
@@ -731,7 +658,6 @@ export default function Index() {
           justify-content: center;
           gap: 0;
         }
-
         .captain-character-wrap {
           position: relative;
           z-index: 1;
@@ -742,7 +668,6 @@ export default function Index() {
           align-items: center;
           justify-content: center;
         }
-
         .captain-aura {
           position: absolute;
           inset: 12%;
@@ -751,7 +676,6 @@ export default function Index() {
           background: rgba(221,151,53,.22);
           filter: blur(42px);
         }
-
         .captain-character {
           display: block;
           width: 100%;
@@ -764,7 +688,6 @@ export default function Index() {
           pointer-events: none;
           user-select: none;
         }
-
         .captain-message {
           position: relative;
           z-index: 2;
@@ -781,7 +704,6 @@ export default function Index() {
           box-shadow: 0 16px 40px rgba(0,0,0,.38), inset 0 1px rgba(255,255,255,.04);
           backdrop-filter: blur(12px);
         }
-
         /* UPDATED: speech pointer protrudes from the RIGHT side */
         .captain-message::after {
           position: absolute;
@@ -798,7 +720,6 @@ export default function Index() {
           border-left: none;
           background: #171611;
         }
-
         .captain-message-kicker {
           display: block;
           margin-bottom: 9px;
@@ -807,7 +728,6 @@ export default function Index() {
           font-weight: 800;
           letter-spacing: .12em;
         }
-
         .captain-message h3 {
           margin: 0;
           color: #f4dba7;
@@ -816,14 +736,12 @@ export default function Index() {
           font-weight: 800;
           line-height: 1.5;
         }
-
         .captain-message p {
           margin: 9px 0 0;
           color: rgba(244,232,207,.83);
           font-size: 11px;
           line-height: 1.7;
         }
-
         .captain-message-footer {
           display: flex;
           align-items: center;
@@ -838,9 +756,7 @@ export default function Index() {
           letter-spacing: .1em;
           white-space: nowrap;
         }
-
         .captain-message-footer span { color: #f0cb80; }
-
         /* Portal cards */
         .portal-card {
           position: relative;
@@ -861,21 +777,17 @@ export default function Index() {
           transition: border-color .25s, box-shadow .25s;
           cursor: pointer;
         }
-
         .portal-card:hover {
           border-color: rgba(245,219,165,.78);
           box-shadow: 0 25px 75px rgba(0,0,0,.44), 0 0 30px rgba(224,187,118,.07);
         }
-
         .portal-card.admin-card {
           border-color: rgba(144,187,192,.35);
           background:
             radial-gradient(ellipse at 100% 0%, rgba(54,105,113,.17), transparent 50%),
             linear-gradient(145deg, rgba(21,40,43,.97), rgba(10,15,17,.98));
         }
-
         .portal-card.admin-card:hover { border-color: rgba(174,216,220,.75); }
-
         .card-topline {
           position: absolute;
           top: 0;
@@ -884,18 +796,15 @@ export default function Index() {
           height: 1px;
           background: linear-gradient(90deg, transparent, var(--gold), transparent);
         }
-
         .admin-card .card-topline {
           background: linear-gradient(90deg, transparent, #9dc7cc, transparent);
         }
-
         .portal-card-top {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
           gap: 16px;
         }
-
         .portal-icon {
           display: flex;
           width: 58px;
@@ -908,30 +817,24 @@ export default function Index() {
           color: var(--gold-bright);
           font-size: 29px;
         }
-
         .admin-card .portal-icon {
           border-color: rgba(157,199,204,.35);
           color: #b6d5d7;
         }
-
         .portal-arrow {
           color: rgba(224,187,118,.65);
           font-size: 25px;
           transition: transform .2s;
         }
-
         .portal-card:hover .portal-arrow { transform: translate(3px, -3px); }
         .portal-copy { margin-top: 26px; }
-
         .portal-kicker {
           color: var(--gold);
           font-size: 10px;
           font-weight: 700;
           letter-spacing: .19em;
         }
-
         .admin-card .portal-kicker { color: #b6d5d7; }
-
         .portal-title {
           margin-top: 9px;
           font-size: clamp(23px, 3vw, 31px);
@@ -939,9 +842,7 @@ export default function Index() {
           line-height: 1.2;
           color: #f4dfb2;
         }
-
         .admin-card .portal-title { color: #d0e5e5; }
-
         .portal-description {
           margin-top: 11px;
           max-width: 320px;
@@ -949,9 +850,7 @@ export default function Index() {
           font-size: 14px;
           line-height: 1.75;
         }
-
         .admin-card .portal-description { color: rgba(210,229,229,.75); }
-
         .portal-footer {
           display: flex;
           align-items: center;
@@ -964,10 +863,8 @@ export default function Index() {
           font-weight: 700;
           letter-spacing: .15em;
         }
-
         .portal-footer span:last-child { font-size: 19px; letter-spacing: 0; }
         .admin-card .portal-footer { color: #c2dfe1; }
-
         /* Login panel and fields */
         .hunt-panel {
           position: relative;
@@ -977,12 +874,10 @@ export default function Index() {
           box-shadow: 0 24px 80px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.04);
           backdrop-filter: blur(18px);
         }
-
         .hunt-panel.admin {
           border-color: rgba(139,177,181,.35);
           background: linear-gradient(145deg, rgba(23,39,42,.96), rgba(10,15,17,.98));
         }
-
         .hunt-input {
           box-sizing: border-box;
           width: 100%;
@@ -997,22 +892,17 @@ export default function Index() {
           font-size: 16px;
           transition: border-color .2s, background .2s, box-shadow .2s;
         }
-
         .hunt-input:focus {
           border-color: #e5bc72;
           background: rgba(0,0,0,.45);
           box-shadow: 0 0 0 3px rgba(224,187,118,.08);
         }
-
         .hunt-input::placeholder { color: rgba(247,237,218,.45); }
-
         .admin-form .hunt-input:focus {
           border-color: #a4cbd0;
           box-shadow: 0 0 0 3px rgba(164,203,208,.08);
         }
-
         .field-label-wrap { display: block; }
-
         .field-label {
           display: block;
           margin-bottom: 8px;
@@ -1020,11 +910,9 @@ export default function Index() {
           font-size: 13px;
           font-weight: 500;
         }
-
         .admin-form .field-label { color: #d2e0df; }
         .password-wrap { position: relative; display: block; }
         .password-input { padding-right: 76px; }
-
         .password-toggle {
           position: absolute;
           top: 0;
@@ -1035,13 +923,11 @@ export default function Index() {
           font-size: 11px;
           font-weight: 700;
         }
-
         .admin-form .password-toggle { color: #c3dadd; }
         .hunt-action { min-height: 50px; transition: filter .2s, transform .2s; }
         .hunt-action:hover:not(:disabled) { filter: brightness(1.1); }
         .hunt-action:active:not(:disabled) { transform: scale(.985); }
         .hunt-action:disabled { cursor: not-allowed; opacity: .55; }
-
         .form-submit {
           display: flex;
           width: 100%;
@@ -1056,14 +942,11 @@ export default function Index() {
           box-shadow: 0 8px 25px rgba(0,0,0,.2);
           font-weight: 700;
         }
-
         .form-submit.admin-submit {
           border-color: rgba(180,219,221,.35);
           background: linear-gradient(100deg, #25444a, #3b656c);
         }
-
         .form-submit:disabled { opacity: .6; }
-
         .error-box {
           border: 1px solid rgba(248,113,113,.3);
           border-radius: 7px;
@@ -1073,10 +956,8 @@ export default function Index() {
           font-size: 13px;
           line-height: 1.6;
         }
-
         .form-back { color: rgba(244,232,207,.75); font-size: 13px; }
         .form-back:hover { color: #f4e8cf; }
-
         .divider-label {
           display: flex;
           align-items: center;
@@ -1086,16 +967,13 @@ export default function Index() {
           font-weight: 700;
           letter-spacing: .18em;
         }
-
         .divider-label::before, .divider-label::after {
           height: 1px;
           flex: 1;
           background: rgba(224,187,118,.18);
           content: '';
         }
-
         .brand-fallback { display: flex; align-items: center; justify-content: center; }
-
         .horizontal-fallback {
           display: flex;
           align-items: center;
@@ -1106,16 +984,13 @@ export default function Index() {
           font-weight: 800;
           letter-spacing: .08em;
         }
-
         .horizontal-fallback span { display: flex; flex-direction: column; gap: 3px; }
-
         .horizontal-fallback small {
           color: #d7ae68;
           font-family: 'DM Sans', sans-serif;
           font-size: 9px;
           letter-spacing: .2em;
         }
-
         /* Login welcome message */
         .welcome-overlay {
           position: fixed;
@@ -1127,7 +1002,6 @@ export default function Index() {
           background: rgba(2,5,6,.78);
           backdrop-filter: blur(8px);
         }
-
         .welcome-card {
           width: min(480px, 100%);
           border: 1px solid rgba(224,187,118,.6);
@@ -1139,14 +1013,12 @@ export default function Index() {
             linear-gradient(145deg, #211a12, #080d0e);
           box-shadow: 0 25px 90px rgba(0,0,0,.6), inset 0 1px rgba(255,255,255,.06);
         }
-
         .welcome-kicker {
           color: #e0bb76;
           font-size: 9px;
           font-weight: 800;
           letter-spacing: .24em;
         }
-
         .welcome-title {
           margin-top: 12px;
           color: #f7dfad;
@@ -1154,7 +1026,6 @@ export default function Index() {
           font-weight: 800;
           line-height: 1.2;
         }
-
         .welcome-copy {
           margin: 14px auto 0;
           max-width: 360px;
@@ -1162,7 +1033,6 @@ export default function Index() {
           font-size: 14px;
           line-height: 1.8;
         }
-
         .welcome-loading {
           margin-top: 22px;
           color: #d4b477;
@@ -1170,85 +1040,70 @@ export default function Index() {
           font-weight: 800;
           letter-spacing: .2em;
         }
-
         /* Medium laptop */
         @media (min-width: 701px) and (max-width: 1100px) {
           .hero-layout {
             grid-template-columns: minmax(0, 1fr) minmax(270px, 340px);
             gap: 18px;
           }
-
           .hero-title { font-size: clamp(46px, 5.6vw, 66px); }
-
           .hero-emblem img {
             width: min(100%, 290px);
             max-height: 165px;
           }
-
           .captain-character-wrap {
             flex-basis: 175px;
             width: 175px;
             height: 310px;
           }
-
           .captain-message {
             flex-basis: 165px;
             width: 165px;
             max-width: 165px;
             padding: 13px 11px 10px;
           }
-
           .captain-message h3 { font-size: 11px; }
           .captain-message p { font-size: 9px; line-height: 1.6; }
           .captain-message-kicker { font-size: 6px; }
           .captain-message-footer { font-size: 5px; gap: 4px; }
         }
-
         /* Mobile */
         @media (max-width: 700px) {
           .hero-layout {
             grid-template-columns: minmax(0, 1fr);
             gap: 24px;
           }
-
           .hero-main { width: 100%; }
           .hero-emblem { margin-bottom: 14px; }
-
           .hero-emblem img {
             width: min(75%, 260px);
             max-height: 155px;
           }
-
           .hero-title {
             font-size: clamp(43px, 11vw, 68px);
             line-height: 1.03;
           }
-
           .hero-description {
             margin-top: 16px;
             font-size: 13px;
             line-height: 1.8;
           }
-
           .captain-hero {
             width: min(100%, 430px);
             margin: 0 auto;
             gap: 8px;
           }
-
           .captain-character-wrap {
             flex: 0 0 125px;
             width: 125px;
             height: 175px;
           }
-
           .captain-message {
             flex: 1 1 auto;
             width: auto;
             max-width: none;
             padding: 13px 12px 10px;
           }
-
           /* UPDATED: right-side pointer on mobile too */
           .captain-message::after {
             top: 26px;
@@ -1263,39 +1118,32 @@ export default function Index() {
             border-left: none;
             background: #171611;
           }
-
           .captain-message-kicker {
             margin-bottom: 6px;
             font-size: 6px;
             letter-spacing: .08em;
           }
-
           .captain-message h3 { font-size: 12px; }
-
           .captain-message p {
             margin-top: 6px;
             font-size: 10px;
             line-height: 1.6;
           }
-
           .captain-message-footer {
             gap: 4px;
             margin-top: 8px;
             padding-top: 7px;
             font-size: 6px;
           }
-
           .portal-card { min-height: 235px; padding: 21px; }
           .portal-icon { width: 50px; height: 50px; }
         }
-
         @media (max-width: 380px) {
           .captain-character-wrap {
             flex-basis: 100px;
             width: 100px;
             height: 150px;
           }
-
           .captain-message { padding: 11px 9px; }
           .captain-message-kicker { font-size: 5px; letter-spacing: .06em; }
           .captain-message h3 { font-size: 10px; }
@@ -1303,7 +1151,6 @@ export default function Index() {
           .captain-message-footer { gap: 3px; font-size: 5px; }
           .hero-title { font-size: 41px; }
         }
-
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {
             animation-duration: .01ms !important;
@@ -1313,7 +1160,6 @@ export default function Index() {
           }
         }
       `}</style>
-
       <div className="hunt-backdrop" aria-hidden="true">
         <img
           src="/login-bg.png"
@@ -1321,12 +1167,10 @@ export default function Index() {
           className="hunt-backdrop-image"
           onError={(event) => {
             const image = event.currentTarget;
-
             if (image.dataset.fallbackApplied === 'true') {
               image.style.display = 'none';
               return;
             }
-
             image.dataset.fallbackApplied = 'true';
             image.src = '/cave.png';
           }}
@@ -1336,7 +1180,6 @@ export default function Index() {
         <div className="pointer-events-none absolute bottom-[-100px] left-[-100px] h-80 w-80 rounded-full bg-amber-700/5 blur-3xl" />
         <div className="pointer-events-none absolute right-[-100px] top-[35%] h-80 w-80 rounded-full bg-teal-500/5 blur-3xl" />
       </div>
-
       <main className="relative mx-auto flex min-h-[100svh] w-full max-w-[1450px] flex-col px-4 py-5 sm:px-8 sm:py-7 lg:px-14">
         <header className="hunt-header">
           <div className="flex min-w-0 items-center gap-3">
@@ -1347,7 +1190,6 @@ export default function Index() {
             onToggle={() => setSoundEnabled((current) => !current)}
           />
         </header>
-
         <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center py-8 sm:py-10 lg:py-12">
           <AnimatePresence mode="wait" initial={false}>
             {mode === 'IDLE' ? (
@@ -1368,19 +1210,15 @@ export default function Index() {
                     >
                       <BrandLogo alt="Treasure Hunt 2K26 emblem" />
                     </motion.div>
-
                     <div className="hero-eyebrow">The legend begins</div>
-
                     <h1 className="hero-title">
                       Treasure
                       <span>Hunt 2K26</span>
                     </h1>
-
                     <p className="hero-description">
                       Follow the map. Decipher the clues. Trust your crew.
                       The treasure belongs to those who find it first.
                     </p>
-
                     <div className="hero-steps">
                       <span>Explore</span>
                       <span className="star">✦</span>
@@ -1391,10 +1229,8 @@ export default function Index() {
                       <span>Win</span>
                     </div>
                   </div>
-
                   <CaptainCorner reducedMotion={reducedMotion} />
                 </section>
-
                 <section
                   className="grid w-full grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2"
                   aria-label="Choose your portal"
@@ -1410,7 +1246,6 @@ export default function Index() {
                     reducedMotion={reducedMotion}
                   />
                 </section>
-
                 <div className="divider-label mx-auto mt-9 max-w-xs sm:mt-12">
                   CHOOSE YOUR EXPEDITION
                 </div>
@@ -1422,12 +1257,10 @@ export default function Index() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={reducedMotion ? undefined : { opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
-                className={`hunt-panel mx-auto w-full max-w-lg rounded-xl p-5 sm:rounded-2xl sm:p-8 md:p-10 ${
-                  mode === 'ADMIN' ? 'admin' : ''
-                }`}
+                className={`hunt-panel mx-auto w-full max-w-lg rounded-xl p-5 sm:rounded-2xl sm:p-8 md:p-10 ${mode === 'ADMIN' ? 'admin' : ''
+                  }`}
               >
                 <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#e7bd70] to-transparent" />
-
                 <button
                   type="button"
                   onClick={() => {
@@ -1444,7 +1277,6 @@ export default function Index() {
                   <span aria-hidden="true">←</span>
                   Back to portals
                 </button>
-
                 <div className="mb-7 flex items-center gap-4 sm:mb-9">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#d9b46e]/30 bg-black/25 p-1">
                     <BrandLogo
@@ -1457,147 +1289,117 @@ export default function Index() {
                       {mode === 'TEAM' ? 'Crew identification' : 'Expedition authority'}
                     </p>
                     <h2
-                      className={`hunt-title text-xl font-bold sm:text-2xl ${
-                        mode === 'ADMIN' ? 'text-[#c3dadd]' : 'text-[#f5d397]'
-                      }`}
+                      className={`hunt-title text-xl font-bold sm:text-2xl ${mode === 'ADMIN' ? 'text-[#d0e5e5]' : 'text-[#f4dfb2]'
+                        }`}
                     >
-                      {mode === 'TEAM' ? 'Welcome back, crew.' : 'Admin Access'}
+                      {mode === 'TEAM' ? 'Team Login' : 'Admin Login'}
                     </h2>
                   </div>
                 </div>
-
-                <p className="mb-7 text-sm leading-6 text-white/70">
-                  {mode === 'TEAM'
-                    ? 'Enter your registered team details to continue your expedition.'
-                    : 'Sign in to manage clues, teams, timers and the expedition.'}
-                </p>
-
                 {mode === 'TEAM' ? (
                   <form onSubmit={handleTeamLogin} className="space-y-5">
-                    {teamError && (
-                      <p role="alert" aria-live="polite" className="error-box">
-                        {teamError}
-                      </p>
-                    )}
-
-                    <label className="field-label-wrap" htmlFor="team-name">
+                    <label className="field-label-wrap">
                       <span className="field-label">Registered team name</span>
                       <input
-                        id="team-name"
                         className="hunt-input"
+                        type="text"
                         value={teamForm.teamName}
-                        onChange={(event) => {
+                        onChange={(event) =>
                           setTeamForm((current) => ({
                             ...current,
                             teamName: event.target.value,
-                          }));
-                          if (teamError) setTeamError('');
-                        }}
+                          }))
+                        }
                         placeholder="Enter your team name"
                         autoComplete="username"
-                        autoCapitalize="none"
                         maxLength={100}
                         required
                       />
                     </label>
-
                     <PasswordField
                       id="team-password"
                       label="Team password"
                       value={teamForm.password}
-                      onChange={(event) => {
+                      onChange={(event) =>
                         setTeamForm((current) => ({
                           ...current,
                           password: event.target.value,
-                        }));
-                        if (teamError) setTeamError('');
-                      }}
+                        }))
+                      }
                       visible={showPassword}
                       onToggle={() => setShowPassword((current) => !current)}
                     />
-
-                    <button type="submit" disabled={loading} className="form-submit hunt-action">
-                      <span>{loading ? 'Verifying crew…' : 'Enter the Hunt'}</span>
-                      <span aria-hidden="true">{loading ? '…' : '→'}</span>
+                    {teamError && (
+                      <div className="error-box" role="alert">
+                        {teamError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="form-submit hunt-action"
+                    >
+                      {loading ? 'VERIFYING CREW…' : 'ENTER THE HUNT'}
+                      <span aria-hidden="true">→</span>
                     </button>
                   </form>
                 ) : (
                   <form onSubmit={handleAdminLogin} className="space-y-5">
-                    {adminError && (
-                      <p role="alert" aria-live="polite" className="error-box">
-                        {adminError}
-                      </p>
-                    )}
-
-                    <label className="field-label-wrap admin-form" htmlFor="admin-username">
-                      <span className="field-label">Admin username</span>
+                    <label className="field-label-wrap admin-form">
+                      <span className="field-label">Admin email</span>
                       <input
-                        id="admin-username"
                         className="hunt-input"
+                        type="email"
                         value={adminForm.username}
-                        onChange={(event) => {
+                        onChange={(event) =>
                           setAdminForm((current) => ({
                             ...current,
                             username: event.target.value,
-                          }));
-                          if (adminError) setAdminError('');
-                        }}
-                        placeholder="Enter admin username"
+                          }))
+                        }
+                        placeholder="Enter your admin email"
                         autoComplete="username"
-                        autoCapitalize="none"
-                        maxLength={100}
+                        maxLength={254}
                         required
                       />
                     </label>
-
                     <PasswordField
                       id="admin-password"
                       label="Admin password"
                       value={adminForm.password}
-                      onChange={(event) => {
+                      onChange={(event) =>
                         setAdminForm((current) => ({
                           ...current,
                           password: event.target.value,
-                        }));
-                        if (adminError) setAdminError('');
-                      }}
+                        }))
+                      }
                       visible={showPassword}
                       onToggle={() => setShowPassword((current) => !current)}
                       admin
                     />
-
-                    <button type="submit" disabled={loading} className="form-submit admin-submit hunt-action">
-                      <span>{loading ? 'Verifying access…' : 'Open Admin Portal'}</span>
-                      <span aria-hidden="true">{loading ? '…' : '→'}</span>
+                    {adminError && (
+                      <div className="error-box" role="alert">
+                        {adminError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="form-submit admin-submit hunt-action"
+                    >
+                      {loading ? 'VERIFYING AUTHORITY…' : 'ACCESS COMMAND DECK'}
+                      <span aria-hidden="true">→</span>
                     </button>
                   </form>
                 )}
-
-                <div className="mt-7 border-t border-white/10 pt-5 text-center">
-                  <p className="text-[10px] leading-5 text-white/45">
-                    TREASURE HUNT 2K26
-                    <span className="mx-2 text-[#d9b46e]/60">✦</span>
-                    {mode === 'TEAM' ? 'CREW ACCESS' : 'ORGANIZER ACCESS'}
-                  </p>
-                </div>
               </motion.section>
             )}
           </AnimatePresence>
         </div>
-
-        <footer className="mt-auto flex flex-col items-center justify-between gap-3 border-t border-[#d9b46e]/15 py-5 text-center sm:flex-row sm:text-left">
-          <div className="flex items-center gap-2">
-            <CompassEmblem size={22} />
-            <span className="text-[9px] font-bold uppercase tracking-[.17em] text-[#e0bb7d]/75">
-              Treasure Hunt 2K26
-            </span>
-          </div>
-          <p className="text-[10px] text-[#e6dac0]/50">
-            Every clue leads somewhere. Every choice matters.
-          </p>
+        <footer className="py-4 text-center text-[9px] font-bold tracking-[.2em] text-[#d9b46e]/50">
+          TREASURE HUNT 2K26 · FOLLOW THE LEGEND
         </footer>
       </main>
-
       <AnimatePresence>
         {welcomeMessage && (
           <motion.div
@@ -1605,27 +1407,19 @@ export default function Index() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            role="status"
-            aria-live="polite"
           >
-            <motion.section
+            <motion.div
               className="welcome-card"
-              initial={reducedMotion ? false : { opacity: 0, y: 18, scale: 0.97 }}
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.35 }}
             >
-              <div className="mx-auto mb-5 flex justify-center">
-                <BrandLogo
-                  className="h-auto max-h-20 w-40 object-contain"
-                  alt="Treasure Hunt emblem"
-                />
-              </div>
               <p className="welcome-kicker">{welcomeMessage.eyebrow}</p>
               <h2 className="welcome-title">{welcomeMessage.title}</h2>
               <p className="welcome-copy">{welcomeMessage.message}</p>
               <p className="welcome-loading">PREPARING YOUR VOYAGE…</p>
-            </motion.section>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
